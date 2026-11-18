@@ -9,20 +9,16 @@ const FIELDS = [
   ['deaths', 'Deaths'], ['assists', 'Assists'], ['firstBloods', 'First bloods'], ['matches', 'Matches analyzed'],
 ];
 const OPTIONAL_FIELDS = [
-  ['rounds', 'Rounds played'], ['firstDeaths', 'First deaths'], ['tradeKills', 'Trade kills'],
+  ['rounds', 'Rounds played'], ['totalDamage', 'Total damage'], ['roundsSurvived', 'Rounds survived'], ['firstDeaths', 'First deaths'], ['tradeKills', 'Trade kills'],
   ['clutchAttempts', 'Clutch attempts'], ['clutchWins', 'Clutch wins'],
 ];
 const ALL_FIELDS = [...FIELDS, ...OPTIONAL_FIELDS];
+const ROLE_NAMES = ['Duelist', 'Initiator', 'Sentinel', 'Controller'];
+const AGENT_FIELDS = [['m', 'Matches'], ['wr', 'Win %'], ['kd', 'K/D'], ['adr', 'ADR'], ['acs', 'ACS']];
 const EMPTY = { ...Object.fromEntries(ALL_FIELDS.map(([k]) => [k, ''])), rank: '', roles: {}, agents: [] };
 const SAMPLE = {
   rank: 'Platinum 3', acs: 292.3, adr: 188.7, kd: 1.25, kast: 70.8, hs: 28.0, win: 51.6, kpr: 1.0,
   kills: 2531, deaths: 2026, assists: 654, firstBloods: 517, matches: 20,
-  roles: { Duelist: { wr: 55.6, kda: 1.52 }, Initiator: { wr: 50.0, kda: 1.55 }, Sentinel: { wr: 46.2, kda: 1.55 }, Controller: { wr: 53.8, kda: 1.7 } },
-  agents: [
-    { name: 'Chamber', m: 18, wr: 61.1, kd: 1.37, adr: 193.6, acs: 306.5 },
-    { name: 'Sova', m: 15, wr: 40.0, kd: 1.16, adr: 184.2, acs: 284.4 },
-    { name: 'Hush', m: 11, wr: 72.7, kd: 1.05, adr: 167.4, acs: 259.2 },
-  ],
 };
 
 /* option = [label, points]. Numeric keys add up; `side` is stored as text. */
@@ -126,8 +122,12 @@ export default function ValorantAnalyzer() {
     setRes(r); setSnaps(loadSnaps()); setStep('result');
   }
   const restart = () => { setStats(EMPTY); setAnswers({}); setQi(0); setRes(null); setStep('confirm'); };
-  const ready = ['acs', 'adr', 'kd', 'kast'].every((k) => String(stats[k]).trim() !== '');
+  const ready = String(stats.acs).trim() !== '' && String(stats.kast).trim() !== ''
+    && (String(stats.adr).trim() !== '' || (Number(stats.rounds) > 0 && Number(stats.totalDamage) >= 0 && String(stats.totalDamage).trim() !== ''))
+    && (String(stats.kd).trim() !== '' || (Number(stats.deaths) > 0 && String(stats.kills).trim() !== ''));
   const s = num(stats);
+  const updateAgent = (index, field, value) => setStats((current) => ({ ...current, agents: (current.agents || []).map((agent, i) => i === index ? { ...agent, [field]: value } : agent) }));
+  const updateRole = (role, field, value) => setStats((current) => ({ ...current, roles: { ...(current.roles || {}), [role]: { ...(current.roles?.[role] || {}), [field]: value === '' ? '' : Number(value) } } }));
 
   return (
     <main className="app-shell min-h-screen bg-[#101317] px-4 py-7 text-white sm:px-6 sm:py-12" style={{ '--accent': '#ff4655' }}>
@@ -150,6 +150,14 @@ export default function ValorantAnalyzer() {
               <summary className="cursor-pointer font-medium text-white/85">Add optional analysis stats</summary>
               <p className="mt-2 text-sm leading-5 text-white/60">These unlock opening, survival, team, and clutch formulas. Leave blank when unavailable; blank values are not treated as zero.</p>
               <div className="mt-4 grid grid-cols-1 gap-3 min-[440px]:grid-cols-2 sm:grid-cols-3">{OPTIONAL_FIELDS.map(([k, label]) => (<label key={k} className="min-w-0 text-sm"><span className="mb-1 block font-medium text-white/85">{label}</span><input aria-label={label} type="number" min="0" step="1" value={stats[k]} onChange={(e) => setStats({ ...stats, [k]: e.target.value })} className="w-full min-w-0 rounded-lg border border-white/25 bg-[#0e1115] px-3 py-2.5 text-white outline-none placeholder:text-white/50 focus:border-[#ff6470] focus:ring-2 focus:ring-[#ff6470]/30" /></label>))}</div>
+            </details>
+            <details className="mt-3 rounded-xl border border-white/15 bg-black/15 p-4">
+              <summary className="cursor-pointer font-medium text-white/85">Add agent and role results</summary>
+              <p className="mt-2 text-sm leading-5 text-white/60">These results appear only when you enter them here or import a tracker screenshot. Example data does not invent agent or role splits.</p>
+              <h3 className="mt-5 text-sm font-semibold text-white/85">Results by role</h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">{ROLE_NAMES.map((role) => <div key={role} className="rounded-lg border border-white/10 p-3"><p className="mb-2 text-sm font-medium">{role}</p><div className="grid grid-cols-2 gap-2">{[['wr', 'Win %'], ['kda', 'KDA']].map(([key, label]) => <label key={key} className="min-w-0 text-xs text-white/65">{label}<input aria-label={`${role} ${label}`} type="number" min="0" max={key === 'wr' ? 100 : 10} step="any" value={stats.roles?.[role]?.[key] ?? ''} onChange={(event) => updateRole(role, key, event.target.value)} className="mt-1 w-full min-w-0 rounded-lg border border-white/25 bg-[#0e1115] px-2 py-2 text-sm text-white" /></label>)}</div></div>)}</div>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold text-white/85">Results by agent</h3><Button variant="secondary" isDisabled={(stats.agents || []).length >= 5} className="!border !border-white/25 !bg-[#252c34] !text-white" onPress={() => setStats((current) => ({ ...current, agents: [...(current.agents || []), { name: '', m: '', wr: '', kd: '', adr: '', acs: '' }] }))}>Add agent</Button></div>
+              <div className="mt-3 space-y-3">{(stats.agents || []).map((agent, index) => <div key={index} className="rounded-lg border border-white/10 p-3"><div className="mb-3 flex items-center gap-3"><input aria-label={`Agent ${index + 1} name`} type="text" maxLength="30" placeholder="Agent name" value={agent.name || ''} onChange={(event) => updateAgent(index, 'name', event.target.value)} className="min-w-0 flex-1 rounded-lg border border-white/25 bg-[#0e1115] px-3 py-2 text-sm text-white placeholder:text-white/45" /><Button variant="secondary" className="!border !border-white/25 !bg-[#252c34] !text-white" onPress={() => setStats((current) => ({ ...current, agents: (current.agents || []).filter((_, i) => i !== index) }))}>Remove</Button></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{AGENT_FIELDS.map(([key, label]) => <label key={key} className="min-w-0 text-xs text-white/65">{label}<input aria-label={`${agent.name || `Agent ${index + 1}`} ${label}`} type="number" min="0" max={key === 'wr' ? 100 : key === 'kd' ? 10 : key === 'adr' ? 400 : key === 'acs' ? 600 : 5000} step="any" value={agent[key] ?? ''} onChange={(event) => updateAgent(index, key, event.target.value === '' ? '' : Number(event.target.value))} className="mt-1 w-full min-w-0 rounded-lg border border-white/25 bg-[#0e1115] px-2 py-2 text-sm text-white" /></label>)}</div></div>)}</div>
             </details>
             <div className="mt-5 flex gap-2"><Button variant="primary" isDisabled={!ready} style={{ color: '#fff', backgroundColor: ready ? '#ff4655' : '#353b43', opacity: 1 }} onPress={() => setStep('quiz')}>Continue to questions</Button></div>
             <div className="mt-8 grid gap-3 border-t border-white/10 pt-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -274,7 +282,7 @@ export default function ValorantAnalyzer() {
                         {dimension.metrics.map((item) => (
                           <li key={item.name} className="py-3 first:pt-0 last:pb-0">
                             <div className="flex flex-wrap justify-between gap-2 text-sm"><span className="font-medium text-white/85">{item.name}</span><span className={item.availabilityStatus === 'available' ? 'text-white' : 'text-white/50'}>{item.displayValue}</span></div>
-                            <details className="mt-1 text-xs text-white/55"><summary className="w-fit cursor-pointer">Formula and evidence</summary><p className="mt-1 leading-5">Formula: {item.formula}. Source: {item.sourceFields.join(', ')}. Direction: {item.direction}. Sample: {item.sampleSize ?? 'not provided'} matches. Comparison: {item.comparisonGroup}. Confidence: {item.confidence}.</p></details>
+                            <details className="mt-1 text-xs text-white/55"><summary className="w-fit cursor-pointer">Formula and evidence</summary><p className="mt-1 leading-5">Formula: {item.formula}. Source: {item.sourceFields.join(', ')}. Direction: {item.direction}. Sample: {item.sampleSize ?? 'not provided'} matches. Comparison: {item.comparisonGroup}. Confidence: {item.confidence}.{item.confidenceInterval && ` 95% ${item.confidenceInterval.method} interval: ${item.confidenceInterval.lower.toFixed(1)}–${item.confidenceInterval.upper.toFixed(1)}% based on ${item.confidenceInterval.attempts} attempts.`}</p></details>
                           </li>
                         ))}
                       </ul>
@@ -291,13 +299,13 @@ export default function ValorantAnalyzer() {
               <TabPanel id="deep">
                 <div className={`${panel} mt-4`}>
                   <h3 className="mb-3 font-semibold">Win rate by role</h3>
-                  {Object.entries(s.roles || {}).length === 0 && <p className="text-sm text-white/60">Role-level comparisons are not available in manual entry yet.</p>}
-                  {Object.entries(s.roles || {}).map(([r, v]) => <Bar key={r} label={r} value={v.wr} max={100} text={`${v.wr}% · KDA ${v.kda}`} />)}
+                  {Object.entries(s.roles || {}).filter(([, v]) => v.wr !== '' && v.kda !== '').length === 0 && <p className="text-sm text-white/60">No role splits were entered or extracted for this sample.</p>}
+                  {Object.entries(s.roles || {}).filter(([, v]) => v.wr !== '' && v.kda !== '').map(([r, v]) => <Bar key={r} label={r} value={Number(v.wr)} max={100} text={`${v.wr}% · KDA ${v.kda}`} />)}
                 </div>
                 <div className={`${panel} mt-4`}>
                   <h3 className="mb-3 font-semibold">Top agents</h3>
-                  {(s.agents || []).length === 0 && <p className="text-sm text-white/60">Agent-level comparisons are not available in manual entry yet.</p>}
-                  {(s.agents || []).map((a) => <Bar key={a.name} label={`${a.name} (${a.m} matches)`} value={a.wr} max={100} text={`${a.wr}% win · ${a.kd} K/D · ${a.adr} ADR`} />)}
+                  {(s.agents || []).filter((a) => a.name?.trim() && ['m', 'wr', 'kd', 'adr', 'acs'].every((key) => a[key] !== '' && Number.isFinite(Number(a[key])))).length === 0 && <p className="text-sm text-white/60">No complete agent splits were entered or extracted for this sample.</p>}
+                  {(s.agents || []).filter((a) => a.name?.trim() && ['m', 'wr', 'kd', 'adr', 'acs'].every((key) => a[key] !== '' && Number.isFinite(Number(a[key])))).map((a) => <Bar key={a.name} label={`${a.name} (${a.m} matches)`} value={Number(a.wr)} max={100} text={`${a.wr}% win · ${a.kd} K/D · ${a.adr} ADR`} />)}
                 </div>
                 <p className="mt-3 text-sm text-white/60">Map-level comparisons are not available in manual entry yet.</p>
               </TabPanel>

@@ -7,11 +7,13 @@ An evidence-first VALORANT player analysis prototype. It combines entered match 
 - Preserves the player's entered values and questionnaire answers locally with a timestamp and analytics model version.
 - Shows seven independent dimensions: mechanics, opening impact, survival, team contribution, clutch performance, consistency, and adaptability.
 - Shows metric formulas, source fields, sample size, comparison requirements, and whether data is available.
-- Offers optional rounds, first deaths, trade kills, and clutch counts so rates are calculated only when their denominators exist.
+- Calculates K/D, KPR, ADR, opening rates, and survival rate from summed counts when their numerators and denominators are entered; retains provided aggregate values when raw totals are missing.
+- Reports Wilson intervals for opening duel, clutch, and survival rates when their attempt counts are available.
+- Accepts optional role and agent breakdowns manually or from screenshot extraction; example data does not fabricate those breakdowns.
 - Explains how a questionnaire tendency was selected and which answers contributed to it.
 - Marks unavailable comparisons instead of filling them with zero or inventing percentiles.
 
-Consistency requires per-match records, and reliable percentiles require a rank, role, agent, and mode comparison cohort. Those data sources are not connected yet. Current role labels describe scenario-answer tendencies; they are not verified performance classifications.
+Consistency requires per-match records, and reliable percentiles, z-scores, Bayesian priors, metric correlations, and context-adjusted comparisons require comparison cohorts or match-level data that are not connected yet. Those measures remain unavailable rather than being estimated. Current playstyle labels describe scenario-answer tendencies; they are not verified performance classifications.
 
 ## Run locally
 

@@ -17,7 +17,7 @@ export const PLAYSTYLE_MIN_QUESTION_COVERAGE = 3;
 export const ANALYSIS_MODEL_VERSION = '1.0.0';
 
 const ROLE_KEYS = Object.keys(PLAYSTYLE_NAMES).filter((key) => key !== 'balanced');
-const INPUT_KEYS = ['acs', 'adr', 'kd', 'kast', 'hs', 'win', 'kpr', 'kills', 'deaths', 'assists', 'firstBloods', 'matches', 'rounds', 'firstDeaths', 'tradeKills', 'clutchAttempts', 'clutchWins'];
+const INPUT_KEYS = ['acs', 'adr', 'totalDamage', 'kd', 'kast', 'hs', 'win', 'kpr', 'kills', 'deaths', 'assists', 'firstBloods', 'matches', 'rounds', 'roundsSurvived', 'firstDeaths', 'tradeKills', 'clutchAttempts', 'clutchWins'];
 
 export const DIMENSION_DEFINITIONS = [
   { key: 'mechanics', title: 'Mechanical skill', summary: 'Combat output and aim indicators.' },
@@ -37,7 +37,7 @@ function readNumber(value, key) {
   return parsed;
 }
 
-function metric({ name, dimension, value, unit = '', formula, sourceFields, direction = 'Context dependent', sampleSize, comparisonGroup }) {
+function metric({ name, dimension, value, unit = '', formula, sourceFields, direction = 'Context dependent', sampleSize, comparisonGroup, confidenceInterval }) {
   const available = value !== null && value !== undefined;
   return {
     modelVersion: ANALYSIS_MODEL_VERSION,
@@ -51,14 +51,25 @@ function metric({ name, dimension, value, unit = '', formula, sourceFields, dire
     comparisonGroup: comparisonGroup || 'Same rank, role, agent, and mode; comparison cohort not connected',
     sampleSize,
     percentile: null,
-    confidence: available ? 'Descriptive only; peer cohort unavailable' : 'Unavailable',
+    confidence: available ? `${confidenceInterval ? '95% Wilson interval reported; ' : ''}Descriptive only; peer cohort unavailable` : 'Unavailable',
+    confidenceInterval: confidenceInterval || null,
     availabilityStatus: available ? 'available' : 'unavailable',
   };
 }
 
+function wilsonInterval(successes, attempts) {
+  if (!Number.isFinite(successes) || !Number.isFinite(attempts) || attempts <= 0 || successes < 0 || successes > attempts) return null;
+  const z = 1.96;
+  const p = successes / attempts;
+  const denominator = 1 + (z * z) / attempts;
+  const center = (p + (z * z) / (2 * attempts)) / denominator;
+  const margin = (z * Math.sqrt((p * (1 - p) + (z * z) / (4 * attempts)) / attempts)) / denominator;
+  return { level: 95, attempts, lower: Math.max(0, (center - margin) * 100), upper: Math.min(100, (center + margin) * 100), method: 'Wilson score' };
+}
+
 function formatMetricValue(item) {
   if (item.availabilityStatus === 'unavailable') return 'Not available';
-  if (Array.isArray(item.value)) return item.value.map(([label, value]) => `${label}: ${value}%`).join(' · ');
+  if (Array.isArray(item.value)) return item.value.map((entry) => Array.isArray(entry) ? `${entry[0]}: ${entry[1]}%` : `${entry.name}: ${entry.wr}% (${entry.m} matches)`).join(' · ');
   if (typeof item.value === 'object') return `${Object.keys(item.value).length} agent records`;
   return `${item.value}${item.unit}`;
 }
@@ -69,6 +80,10 @@ export function analyzePlayer(stats, answers, questions) {
   const rounds = get('rounds');
   const firstBloods = get('firstBloods');
   const firstDeaths = get('firstDeaths');
+  const kills = get('kills');
+  const deaths = get('deaths');
+  const totalDamage = get('totalDamage');
+  const roundsSurvived = get('roundsSurvived');
   const matches = get('matches');
   const sampleSize = matches;
   const dataWarnings = INPUT_KEYS
@@ -76,21 +91,30 @@ export function analyzePlayer(stats, answers, questions) {
     .map((key) => `${key} is outside its valid numeric range and was excluded.`);
   const clutchAttempts = get('clutchAttempts');
   const clutchWins = get('clutchWins');
+  const agentRecords = (Array.isArray(stats.agents) ? stats.agents : []).filter((agent) => agent.name?.trim() && ['m', 'wr', 'kd', 'adr', 'acs'].every((key) => agent[key] !== '' && Number.isFinite(Number(agent[key]))));
+  const roleRecords = Object.entries(stats.roles || {}).filter(([, result]) => result.wr !== '' && result.kda !== '' && Number.isFinite(Number(result.wr)) && Number.isFinite(Number(result.kda)));
   if (clutchAttempts !== null && clutchWins !== null && clutchWins > clutchAttempts) dataWarnings.push('Clutch wins cannot exceed clutch attempts; clutch conversion was withheld.');
   if (rounds !== null && firstBloods !== null && firstBloods > rounds) dataWarnings.push('First bloods exceed rounds played; check that these values cover the same matches.');
   if (rounds !== null && firstDeaths !== null && firstDeaths > rounds) dataWarnings.push('First deaths exceed rounds played; check that these values cover the same matches.');
+  if (rounds !== null && firstBloods !== null && firstDeaths !== null && firstBloods + firstDeaths > rounds) dataWarnings.push('First bloods plus first deaths exceed rounds played; opening duel rates were withheld.');
+  if (rounds !== null && roundsSurvived !== null && roundsSurvived > rounds) dataWarnings.push('Rounds survived exceed rounds played; survival rate was withheld.');
 
   const values = {
-    acs: get('acs'), adr: get('adr'), kd: get('kd'), hs: get('hs'), kast: get('kast'), kpr: get('kpr'), win: get('win'),
+    acs: get('acs'),
+    adr: totalDamage !== null && rounds > 0 ? totalDamage / rounds : get('adr'),
+    kd: kills !== null && deaths > 0 ? kills / deaths : get('kd'),
+    hs: get('hs'), kast: get('kast'),
+    kpr: kills !== null && rounds > 0 ? kills / rounds : get('kpr'), win: get('win'),
     firstBloods,
     firstDeaths,
     openingDifferential: firstBloods !== null && firstDeaths !== null ? firstBloods - firstDeaths : null,
-    openingDifferentialPerRound: firstBloods !== null && firstDeaths !== null && rounds > 0
-      ? ((firstBloods - firstDeaths) / rounds) * 100 : null,
-    openingWinRate: firstBloods !== null && firstDeaths !== null && firstBloods + firstDeaths > 0
+    openingDifferentialPerRound: firstBloods !== null && firstDeaths !== null && rounds > 0 && firstBloods + firstDeaths <= rounds
+      ? (firstBloods - firstDeaths) / rounds : null,
+    openingWinRate: firstBloods !== null && firstDeaths !== null && firstBloods + firstDeaths > 0 && (rounds === null || firstBloods + firstDeaths <= rounds)
       ? (firstBloods / (firstBloods + firstDeaths)) * 100 : null,
-    firstBloodRate: firstBloods !== null && rounds > 0 ? (firstBloods / rounds) * 100 : null,
-    firstDeathRate: firstDeaths !== null && rounds > 0 ? (firstDeaths / rounds) * 100 : null,
+    firstBloodRate: firstBloods !== null && rounds > 0 && firstBloods <= rounds ? firstBloods / rounds : null,
+    firstDeathRate: firstDeaths !== null && rounds > 0 && firstDeaths <= rounds ? firstDeaths / rounds : null,
+    survivalRate: rounds !== null && rounds > 0 && roundsSurvived !== null && roundsSurvived <= rounds ? (roundsSurvived / rounds) * 100 : null,
     kast: get('kast'),
     deathsPerRound: get('deaths') !== null && rounds > 0 ? get('deaths') / rounds : null,
     assistsPerRound: get('assists') !== null && rounds > 0 ? get('assists') / rounds : null,
@@ -102,18 +126,19 @@ export function analyzePlayer(stats, answers, questions) {
 
   const metricList = [
     metric({ name: 'ACS', dimension: 'mechanics', value: values.acs, formula: 'Provided aggregate; original match formula not supplied', sourceFields: ['acs'], sampleSize }),
-    metric({ name: 'Damage per round', dimension: 'mechanics', value: values.adr, formula: 'Provided aggregate; total damage and rounds not retained', sourceFields: ['adr'], unit: ' ADR', direction: 'Higher is more damage; quality depends on context', sampleSize }),
+    metric({ name: 'Damage per round', dimension: 'mechanics', value: values.adr, formula: totalDamage !== null && rounds > 0 ? 'Total damage / rounds played' : 'Provided aggregate; total damage or rounds unavailable for recalculation', sourceFields: totalDamage !== null && rounds > 0 ? ['totalDamage', 'rounds'] : ['adr'], unit: ' ADR', direction: 'Higher is more damage; quality depends on context', sampleSize }),
     metric({ name: 'Headshot rate', dimension: 'mechanics', value: values.hs, formula: 'Provided aggregate', sourceFields: ['hs'], unit: '%', direction: 'Context dependent', sampleSize }),
-    metric({ name: 'K/D', dimension: 'mechanics', value: values.kd, formula: 'Provided aggregate', sourceFields: ['kd'], direction: 'Context dependent', sampleSize }),
-    metric({ name: 'Kills per round', dimension: 'mechanics', value: values.kpr, formula: 'Provided aggregate', sourceFields: ['kpr'], direction: 'Context dependent', sampleSize }),
+    metric({ name: 'K/D', dimension: 'mechanics', value: values.kd, formula: kills !== null && deaths > 0 ? 'Total kills / total deaths' : 'Provided aggregate; kills or deaths unavailable for recalculation', sourceFields: kills !== null && deaths > 0 ? ['kills', 'deaths'] : ['kd'], direction: 'Context dependent', sampleSize }),
+    metric({ name: 'Kills per round', dimension: 'mechanics', value: values.kpr, formula: kills !== null && rounds > 0 ? 'Total kills / total rounds' : 'Provided aggregate; kills or rounds unavailable for recalculation', sourceFields: kills !== null && rounds > 0 ? ['kills', 'rounds'] : ['kpr'], unit: ' /round', direction: 'Context dependent', sampleSize }),
     metric({ name: 'First bloods', dimension: 'opening', value: values.firstBloods, formula: 'Provided count', sourceFields: ['firstBloods'], direction: 'Context dependent', sampleSize }),
-    metric({ name: 'First bloods per round', dimension: 'opening', value: values.firstBloodRate, formula: 'First bloods / rounds played * 100', sourceFields: ['firstBloods', 'rounds'], unit: '%', direction: 'Context dependent; compare by role and rank', sampleSize }),
+    metric({ name: 'First bloods per round', dimension: 'opening', value: values.firstBloodRate, formula: 'Total first bloods / total rounds', sourceFields: ['firstBloods', 'rounds'], unit: ' /round', direction: 'Context dependent; compare by role and rank', sampleSize }),
     metric({ name: 'First deaths', dimension: 'opening', value: values.firstDeaths, formula: 'Provided count', sourceFields: ['firstDeaths'], direction: 'Lower can be favorable; role and engagement context matter', sampleSize }),
-    metric({ name: 'First deaths per round', dimension: 'opening', value: values.firstDeathRate, formula: 'First deaths / rounds played * 100', sourceFields: ['firstDeaths', 'rounds'], unit: '%', direction: 'Lower can be favorable; role and engagement context matter', sampleSize }),
+    metric({ name: 'First deaths per round', dimension: 'opening', value: values.firstDeathRate, formula: 'Total first deaths / total rounds', sourceFields: ['firstDeaths', 'rounds'], unit: ' /round', direction: 'Lower can be favorable; role and engagement context matter', sampleSize }),
     metric({ name: 'Opening differential', dimension: 'opening', value: values.openingDifferential, formula: 'First bloods - first deaths', sourceFields: ['firstBloods', 'firstDeaths'], direction: 'Higher is favorable', sampleSize }),
-    metric({ name: 'Opening differential per round', dimension: 'opening', value: values.openingDifferentialPerRound, formula: '(First bloods - first deaths) / rounds played * 100', sourceFields: ['firstBloods', 'firstDeaths', 'rounds'], unit: '%', direction: 'Higher is favorable', sampleSize }),
-    metric({ name: 'Opening duel win rate', dimension: 'opening', value: values.openingWinRate, formula: 'First bloods / (first bloods + first deaths) * 100', sourceFields: ['firstBloods', 'firstDeaths'], unit: '%', direction: 'Higher is favorable', sampleSize }),
+    metric({ name: 'Opening differential per round', dimension: 'opening', value: values.openingDifferentialPerRound, formula: '(Total first bloods - total first deaths) / total rounds', sourceFields: ['firstBloods', 'firstDeaths', 'rounds'], unit: ' /round', direction: 'Higher is favorable', sampleSize }),
+    metric({ name: 'Opening duel win rate', dimension: 'opening', value: values.openingWinRate, formula: 'First bloods / (first bloods + first deaths) * 100', sourceFields: ['firstBloods', 'firstDeaths'], unit: '%', direction: 'Higher is favorable', sampleSize, confidenceInterval: firstBloods !== null && firstDeaths !== null ? wilsonInterval(firstBloods, firstBloods + firstDeaths) : null }),
     metric({ name: 'KAST', dimension: 'survival', value: values.kast, formula: 'Provided aggregate', sourceFields: ['kast'], unit: '%', direction: 'Higher indicates more rounds with a kill, assist, survival, or trade', sampleSize }),
+    metric({ name: 'Survival rate', dimension: 'survival', value: values.survivalRate, formula: 'Rounds survived / total rounds * 100', sourceFields: ['roundsSurvived', 'rounds'], unit: '%', direction: 'Higher indicates surviving more rounds; role and round context matter', sampleSize, confidenceInterval: wilsonInterval(roundsSurvived, rounds) }),
     metric({ name: 'Rounds played', dimension: 'survival', value: rounds, formula: 'Provided count', sourceFields: ['rounds'], direction: 'Denominator for per-round metrics', sampleSize }),
     metric({ name: 'Deaths', dimension: 'survival', value: get('deaths'), formula: 'Provided count', sourceFields: ['deaths'], direction: 'Context dependent; role and round count matter', sampleSize }),
     metric({ name: 'Deaths per round', dimension: 'survival', value: values.deathsPerRound, formula: 'Deaths / rounds played', sourceFields: ['deaths', 'rounds'], direction: 'Lower is generally favorable; role matters', sampleSize }),
@@ -122,10 +147,10 @@ export function analyzePlayer(stats, answers, questions) {
     metric({ name: 'Match win rate', dimension: 'team', value: values.win, formula: 'Provided aggregate', sourceFields: ['win'], unit: '%', direction: 'Team outcome; not individual contribution by itself', sampleSize }),
     metric({ name: 'Trade kills per round', dimension: 'team', value: values.tradeKillsPerRound, formula: 'Trade kills / rounds played', sourceFields: ['tradeKills', 'rounds'], direction: 'Higher is favorable when trade opportunities are comparable', sampleSize }),
     metric({ name: 'Clutch attempts', dimension: 'clutch', value: values.clutchAttempts, formula: 'Provided count', sourceFields: ['clutchAttempts'], direction: 'Context only; attempts are the denominator', sampleSize }),
-    metric({ name: 'Clutch conversion', dimension: 'clutch', value: values.clutchConversion, formula: 'Clutch wins / clutch attempts * 100', sourceFields: ['clutchWins', 'clutchAttempts'], unit: '%', direction: 'Higher is favorable; report with attempts', sampleSize }),
+    metric({ name: 'Clutch conversion', dimension: 'clutch', value: values.clutchConversion, formula: 'Clutch wins / clutch attempts * 100', sourceFields: ['clutchWins', 'clutchAttempts'], unit: '%', direction: 'Higher is favorable; report with attempts', sampleSize, confidenceInterval: wilsonInterval(clutchWins, clutchAttempts) }),
     metric({ name: 'Match-to-match variation', dimension: 'consistency', value: null, formula: 'Requires per-match metric values (for example, ADR standard deviation)', sourceFields: ['perMatchStats'], direction: 'Lower variation can indicate consistency', sampleSize }),
-    metric({ name: 'Agent results', dimension: 'adaptability', value: Array.isArray(stats.agents) && stats.agents.length ? stats.agents.map((agent) => [agent.name, agent.wr]) : null, formula: 'Win rate by agent; retain match count for each agent', sourceFields: ['agents'], direction: 'Compare only with adequate sample and role context', sampleSize }),
-    metric({ name: 'Role results', dimension: 'adaptability', value: stats.roles && Object.keys(stats.roles).length ? Object.entries(stats.roles).map(([role, result]) => [role, result.wr]) : null, formula: 'Win rate by role; retain match count for each role', sourceFields: ['roles'], direction: 'Compare only with adequate sample and team context', sampleSize }),
+    metric({ name: 'Agent results', dimension: 'adaptability', value: agentRecords.length ? agentRecords.map((agent) => ({ name: agent.name, m: Number(agent.m), wr: Number(agent.wr), kd: Number(agent.kd), adr: Number(agent.adr), acs: Number(agent.acs) })) : null, formula: 'Win percentage, K/D, ADR, and ACS are supplied aggregates; deriving rates requires per-agent match wins and round totals', sourceFields: ['agents.name', 'agents.m', 'agents.wr', 'agents.kd', 'agents.adr', 'agents.acs'], direction: 'Compare with adequate agent sample and rank, map, patch, and team context', sampleSize }),
+    metric({ name: 'Role results', dimension: 'adaptability', value: roleRecords.length ? roleRecords.map(([role, result]) => [role, Number(result.wr)]) : null, formula: 'Role win rate = wins on role / matches on role * 100; this form records the supplied aggregate', sourceFields: ['roles.wr', 'roles.kda'], direction: 'Compare with adequate sample and team context', sampleSize }),
     metric({ name: 'Map and side results', dimension: 'adaptability', value: null, formula: 'Requires match-level map and side data', sourceFields: ['map', 'side'], direction: 'Context dependent', sampleSize }),
   ];
 
@@ -232,6 +257,8 @@ export function analyzePlayer(stats, answers, questions) {
   if (values.openingDifferential === null) recommendations.push('Record first deaths alongside first bloods; together they allow opening differential and duel conversion calculations.');
   if (values.clutchConversion === null && !dataWarnings.some((warning) => warning.startsWith('Clutch wins'))) recommendations.push('Log clutch wins and attempts together. A win count without attempts cannot show clutch success rate.');
   if (!rounds) recommendations.push('Add rounds played to calculate per-round death, assist, and trade rates.');
+  if (totalDamage === null || !rounds) recommendations.push('If your tracker provides total damage, enter it with total rounds to calculate ADR from summed totals.');
+  if (rounds !== null && roundsSurvived === null) recommendations.push('Add rounds survived with rounds played to calculate survival rate; deaths alone cannot tell whether you were alive at round end.');
   recommendations.push('For a default review, note space gained, opponent utility drawn, space retained, and the information that triggered the site call.');
   if (!matches) recommendations.push('Add the number of matches in this sample; keep per-match records to measure consistency and confidence.');
   if (!stats.rank) recommendations.push('Add rank and role context before comparing performance with other players.');
