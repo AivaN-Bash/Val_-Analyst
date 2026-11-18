@@ -50,6 +50,12 @@ npm start
 
 The production server serves `dist/` and the API from one Node process. Configure `ANTHROPIC_API_KEY` as a host secret if screenshot extraction is enabled, and serve the app over HTTPS.
 
+### Deploy the full app to Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FAivaN-Bash%2FVal_-Analyst)
+
+The Render Blueprint installs dependencies, downloads and validates the VCT dataset, builds the app, and starts the Express server. Render must be connected to your GitHub account to create the service. Screenshot extraction stays disabled until you add `ANTHROPIC_API_KEY` as a secret in the Render service settings.
+
 ## Analytics structure
 
 - `src/analytics/player-analysis.js` validates available numeric inputs, calculates supported metrics, exposes availability and formula metadata, and creates separate survey-based tendencies.
