@@ -1,6 +1,6 @@
 # Val Analyst
 
-An evidence-first VALORANT player analysis prototype. It combines entered match aggregates with a 20-question decision profile, while keeping measured stats separate from self-reported tendencies.
+An evidence-first VALORANT player analysis prototype. It combines entered match aggregates with a 30-question decision profile. The questionnaire models stated tendencies, then cross-checks relevant answers against available match statistics without treating raw totals as proof of skill.
 
 It also includes a separate professional VCT archive explorer backed by the downloadable VCT Reference dataset. Archive values are never merged into the user's ranked baseline or questionnaire result.
 
@@ -12,7 +12,7 @@ It also includes a separate professional VCT archive explorer backed by the down
 - Calculates K/D, KPR, ADR, opening rates, and survival rate from summed counts when their numerators and denominators are entered; retains provided aggregate values when raw totals are missing.
 - Reports Wilson intervals for opening duel, clutch, and survival rates when their attempt counts are available.
 - Accepts optional role and agent breakdowns manually or from screenshot extraction; example data does not fabricate those breakdowns.
-- Explains how a questionnaire tendency was selected and which answers contributed to it.
+- Explains how a questionnaire tendency was selected, which answers contributed to it, and how related match statistics do or do not provide context.
 - Adds a professional-style impact report that separates opening creation/risk, personal production, team involvement, survival, clutch outcomes, and unavailable conversion or consistency data.
 - Shows multiple behavioral profile hypotheses only when independent answers support them, alongside observed evidence, limits, missing benchmarks, and review actions.
 - Marks unavailable comparisons instead of filling them with zero or inventing percentiles.

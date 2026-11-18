@@ -15,8 +15,8 @@ export const PLAYSTYLE_MIN_ALIGNMENT = 50;
 export const PLAYSTYLE_MIN_LEAD = 15;
 export const PLAYSTYLE_MIN_QUESTION_COVERAGE = 3;
 export const PLAYSTYLE_MIN_MATCHING_ANSWERS = 2;
-export const FLEX_MIN_MATCHING_ANSWERS = 3;
-export const ANALYSIS_MODEL_VERSION = '1.1.0';
+export const FLEX_MIN_MATCHING_ANSWERS = 4;
+export const ANALYSIS_MODEL_VERSION = '1.2.0';
 
 const ROLE_KEYS = Object.keys(PLAYSTYLE_NAMES).filter((key) => key !== 'balanced');
 const INPUT_KEYS = ['acs', 'adr', 'totalDamage', 'kd', 'kast', 'hs', 'win', 'kpr', 'kills', 'deaths', 'assists', 'firstBloods', 'matches', 'rounds', 'roundsSurvived', 'firstDeaths', 'tradeKills', 'clutchAttempts', 'clutchWins'];
@@ -282,6 +282,61 @@ export function analyzePlayer(stats, answers, questions) {
   addBehaviorHypothesis('Round Stabilizer', 'surv', 2, 'Multiple answers favor preserving a weapon or avoiding low-value risk. Check whether those saves preserve team economy and round advantage.');
   if (matchingSignals.flex >= FLEX_MIN_MATCHING_ANSWERS) behavioralProfiles.push({ name: 'Flexible Playmaker', status: 'Questionnaire hypothesis', description: 'Your answers repeatedly favor changing role to fit the map or composition. Role and map match records are needed to confirm that this flexibility improves outcomes.', evidence: answerBreakdown.flex.filter((answer) => answer.contribution > 0) });
 
+  // Join relevant answers to only the statistics that can describe that behavior.
+  // These checks add context and coverage, not a fabricated skill score.
+  const answered = (...keys) => Object.values(answers).filter((answer) => keys.some((key) => Number(answer?.[key]) > 0)).length;
+  const statCrossChecks = [];
+  const addCrossCheck = (title, answerCount, evidence, reading, limitation) => {
+    if (answerCount > 0) {
+      const status = evidence.startsWith('No direct') ? 'Not captured' : /not entered|were not entered|No role or agent/i.test(evidence) ? 'Stats missing' : 'Stats available';
+      statCrossChecks.push({ title, answerCount, evidence, reading, limitation, status });
+    }
+  };
+  const openingAnswerCount = answered('entry');
+  const openingEvidence = [
+    firstBloods !== null && `${firstBloods} first bloods`,
+    firstDeaths !== null && `${firstDeaths} first deaths`,
+    rounds !== null && `${rounds} rounds`,
+  ].filter(Boolean).join(' · ');
+  addCrossCheck('Opening choices', openingAnswerCount, openingEvidence || 'Opening counts and rounds were not entered.',
+    firstBloods !== null && firstDeaths !== null && rounds > 0
+      ? 'These stats show how often the sample involved opening outcomes and the balance between first kills and first deaths. They add context to your answers about taking space.'
+      : 'Your answers describe an opening preference, but the entered sample cannot yet quantify opening involvement.',
+    'No role/rank benchmark or round-win conversion data; opening counts do not prove that a fight was valuable.');
+  const teamworkAnswerCount = answered('support', 'trade', 'controller', 'initiator');
+  const teamworkEvidence = [
+    get('assists') !== null && `${get('assists')} assists`,
+    get('tradeKills') !== null && `${get('tradeKills')} trade kills`,
+    values.kast !== null && `KAST ${values.kast}%`,
+    rounds !== null && `${rounds} rounds`,
+  ].filter(Boolean).join(' · ');
+  addCrossCheck('Team support choices', teamworkAnswerCount, teamworkEvidence || 'Assists, trades, and KAST were not entered.',
+    teamworkEvidence ? 'These are participation signals that can be reviewed beside your support, trade, and utility answers.' : 'The current stats cannot check these teamwork preferences yet.',
+    'They do not capture utility quality or show whether a trade or assist changed the round result.');
+  const survivalAnswerCount = answered('surv', 'anchor', 'lurker');
+  const survivalEvidence = [
+    values.survivalRate !== null && `survived ${roundsSurvived}/${rounds} rounds (${values.survivalRate.toFixed(1)}%)`,
+    values.deathsPerRound !== null && `${values.deathsPerRound.toFixed(2)} deaths/round`,
+    values.kast !== null && `KAST ${values.kast}%`,
+  ].filter(Boolean).join(' · ');
+  addCrossCheck('Survival and positioning choices', survivalAnswerCount, survivalEvidence || 'Survived rounds, deaths per round, and KAST were not entered.',
+    survivalEvidence ? 'These measures put your answers about preserving rounds and holding space beside recorded outcomes.' : 'The entered sample cannot yet check this preference.',
+    'Scoreboard stats do not reveal position, whether a save was correct, or whether staying alive preserved an advantage.');
+  const clutchAnswerCount = answered('clutch');
+  addCrossCheck('Clutch choices', clutchAnswerCount,
+    values.clutchConversion !== null ? `${clutchWins} wins from ${clutchAttempts} attempts (${values.clutchConversion.toFixed(1)}%)` : 'Clutch wins and attempts were not both entered.',
+    values.clutchConversion !== null ? 'The attempt count and conversion describe recorded clutch outcomes beside your stated approach.' : 'Your answers describe a preferred clutch approach, but there are no complete clutch results to compare.',
+    'Clutch difficulty, player count, economy, and opponent quality are not benchmarked.');
+  const adaptabilityAnswerCount = answered('flex', 'adapt', 'comp', 'counter');
+  const adaptabilityEvidence = [roleRecords.length > 0 && `${roleRecords.length} role records`, agentRecords.length > 0 && `${agentRecords.length} agent records`].filter(Boolean).join(' · ');
+  addCrossCheck('Adaptation choices', adaptabilityAnswerCount, adaptabilityEvidence || 'No role or agent splits were entered.',
+    adaptabilityEvidence ? 'Entered role/agent splits provide outcome context for the situations you described.' : 'The current stats cannot compare your role or agent choices yet.',
+    'Aggregate splits do not establish why a role was chosen or whether switching roles improved team outcomes.');
+  const infoAnswerCount = answered('read', 'map', 'info', 'fake', 'call', 'resource');
+  addCrossCheck('Information and utility choices', infoAnswerCount, 'No direct information, space-control, or utility-timing statistic is available in this form.',
+    'Your answers create a tactical hypothesis for replay review; scoreboard totals cannot verify information quality or utility timing.',
+    'Review round footage or event-level telemetry before treating this as observed behavior.');
+
   const findings = [];
   const add = (type, text, source = 'answers') => findings.push({
     type,
@@ -361,6 +416,7 @@ export function analyzePlayer(stats, answers, questions) {
     decisionRationale,
     impactObservations,
     behavioralProfiles,
+    statCrossChecks,
     reviewPlan,
     dimensions,
     metrics: metricList,
