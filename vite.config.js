@@ -3,6 +3,6 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS === 'true' ? '/Val_-Analyst/' : '/',
   plugins: [react(), tailwindcss()],
-  server: { proxy: { '/api': 'http://localhost:8787' } },
 });

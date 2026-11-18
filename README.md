@@ -1,75 +1,42 @@
 # Val Analyst
 
-An evidence-first VALORANT player analysis prototype. It combines entered match aggregates with a 30-question decision profile. The questionnaire models stated tendencies, then cross-checks relevant answers against available match statistics without treating raw totals as proof of skill.
-
-It also includes a separate professional VCT archive explorer backed by the downloadable VCT Reference dataset. Archive values are never merged into the user's ranked baseline or questionnaire result.
+An evidence-first VALORANT player analyzer that runs entirely in the browser. Enter a recent match sample, answer 30 tactical questions, and review stats, tendencies, and their evidence separately. Nothing is sent to an application server.
 
 ## What it does
 
-- Preserves the player's entered values and questionnaire answers locally with a timestamp and analytics model version.
-- Shows seven independent dimensions: mechanics, opening impact, survival, team contribution, clutch performance, consistency, and adaptability.
-- Shows metric formulas, source fields, sample size, comparison requirements, and whether data is available.
-- Calculates K/D, KPR, ADR, opening rates, and survival rate from summed counts when their numerators and denominators are entered; retains provided aggregate values when raw totals are missing.
-- Reports Wilson intervals for opening duel, clutch, and survival rates when their attempt counts are available.
-- Accepts optional role and agent breakdowns manually or from screenshot extraction; example data does not fabricate those breakdowns.
-- Explains how a questionnaire tendency was selected, which answers contributed to it, and how related match statistics do or do not provide context.
-- Adds a professional-style impact report that separates opening creation/risk, personal production, team involvement, survival, clutch outcomes, and unavailable conversion or consistency data.
-- Shows multiple behavioral profile hypotheses only when independent answers support them, alongside observed evidence, limits, missing benchmarks, and review actions.
-- Marks unavailable comparisons instead of filling them with zero or inventing percentiles.
-
-Consistency requires per-match records, and reliable percentiles, z-scores, Bayesian priors, metric correlations, and context-adjusted comparisons require comparison cohorts or match-level data that are not connected yet. Those measures remain unavailable rather than being estimated. Current playstyle labels describe scenario-answer tendencies; they are not verified performance classifications.
+- Shows seven dimensions: mechanics, opening impact, survival, team contribution, clutch performance, consistency, and adaptability.
+- Explains formulas, sample limits, and missing data rather than treating unavailable values as zero.
+- Uses questionnaire answers to form behavioral tendencies, then shows relevant match stats as context without claiming raw values prove skill.
+- Saves analysis snapshots only in this browser's local storage.
+- Links to [VCT Reference](https://vct-reference.com/) for professional match research. Professional archive search is not bundled into this static version.
 
 ## Run locally
 
 ```bash
-npm install
-npm run data:sync
+npm ci
 npm run dev
 ```
 
-The Vite client runs on port 5173 and the Express API runs on port 8787. Manual analysis works without an API key. Set `ANTHROPIC_API_KEY` in `.env` only if you use the screenshot extraction endpoint.
+Vite starts the app locally. No API key or backend server is required.
 
 ## Code quality
 
-The repository uses ESLint flat config for JavaScript and React Hooks, and Prettier for consistent formatting. VS Code is configured to format on save and apply safe ESLint fixes. Run the full local quality gate before pushing:
+The project uses ESLint flat config, React Hooks rules, and Prettier. VS Code formats on save. Run the quality gate before pushing:
 
 ```bash
 npm run check
 ```
 
-This checks formatting, lint rules, and the production build. Use `npm run lint` or `npm run format` when working on just one part of that workflow.
+## Deploy to GitHub Pages
 
-`npm run data:sync` downloads and validates the VCT Reference DuckDB snapshot. It stores snapshots under `data/vct-snapshots/`, which is intentionally ignored by Git because it is source data, not application code. Each refresh creates a content-addressed copy and updates the local pointer; earlier snapshots are retained. Run this command on the deployment host or in its data preparation step before starting the server.
+The workflow in `.github/workflows/deploy.yml` builds and publishes the static site after each push to `main`.
 
-## Build and deploy
+1. In the GitHub repository, open **Settings → Pages**.
+2. Set **Build and deployment → Source** to **GitHub Actions**.
+3. Push to `main` or run **Deploy static site to GitHub Pages** from the **Actions** tab.
 
-```bash
-npm run build
-npm start
-```
+The project site URL is `https://aivan-bash.github.io/Val_-Analyst/`.
 
-The production server serves `dist/` and the API from one Node process. Configure `ANTHROPIC_API_KEY` as a host secret if screenshot extraction is enabled, and serve the app over HTTPS.
+## Data and privacy
 
-### Deploy the full app to Render
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FAivaN-Bash%2FVal_-Analyst)
-
-The Render Blueprint installs dependencies, downloads and validates the VCT dataset, builds the app, and starts the Express server. Render must be connected to your GitHub account to create the service. Screenshot extraction stays disabled until you add `ANTHROPIC_API_KEY` as a secret in the Render service settings.
-
-## Analytics structure
-
-- `src/analytics/player-analysis.js` validates available numeric inputs, calculates supported metrics, exposes availability and formula metadata, and creates separate survey-based tendencies.
-- `src/ValorantAnalyzer.jsx` collects data and presents findings, dimensions, evidence, and recommendations.
-- `server/index.js` validates screenshot-extraction responses and enforces upload limits.
-- `server/vct-data.js` exposes read-only, rate-limited VCT archive search and player, team, match, and round endpoints.
-- `scripts/sync-vct-data.js` downloads, hashes, schema-checks, and installs immutable local dataset snapshots.
-- `docs/data-sources.md` records source coverage, access constraints, and known gaps.
-
-Analysis snapshots are stored in browser local storage. They include the original entered form values and answers; older snapshots remain readable by the trend view.
-
-## Security notes
-
-- API credentials remain on the server.
-- Screenshot uploads are limited to 6 MB, kept in memory, checked by file content, and never written to disk or logged.
-- Screenshot extraction is rate-limited to 10 uploads per IP per 10 minutes.
-- Model output is validated with Zod before it reaches the client.
+Player stats and questionnaire answers stay in the browser. This version has no server API, screenshot upload, or connected professional-data service. Its source research and external references are documented in [docs/data-sources.md](docs/data-sources.md).

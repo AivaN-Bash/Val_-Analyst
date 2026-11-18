@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Chip, Tabs, TabList, Tab, TabPanel } from '@heroui/react';
 import {
   analyzePlayer,
@@ -508,369 +508,6 @@ const FindingTable = ({ title, intro, items, expanded = false }) => (
   </details>
 );
 
-function VctResearch() {
-  const [status, setStatus] = useState(null);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [profile, setProfile] = useState(null);
-  const [season, setSeason] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    fetch('/api/vct/status')
-      .then((r) => r.json())
-      .then(setStatus)
-      .catch(() => setStatus({ available: false }));
-  }, []);
-  const request = async (url) => {
-    const response = await fetch(url);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Professional archive is unavailable.');
-    return data;
-  };
-  async function search(event) {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    setResults([]);
-    setProfile(null);
-    try {
-      setResults((await request(`/api/vct/search?q=${encodeURIComponent(query)}`)).results);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function select(item, selectedSeason = '') {
-    setBusy(true);
-    setError('');
-    setProfile(null);
-    setSeason(selectedSeason);
-    try {
-      const base =
-        item.kind === 'player'
-          ? `/api/vct/players/${item.id}/profile`
-          : `/api/vct/teams/${item.id}/profile`;
-      const params = selectedSeason ? `?season=${selectedSeason}` : '';
-      setProfile({ kind: item.kind, ...(await request(base + params)) });
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const p = profile;
-  const stat = p?.stats;
-  const fmt = (value, digits = 1) =>
-    value === null || value === undefined ? '—' : Number(value).toFixed(digits);
-  return (
-    <details
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-      className={`${panel} mt-5`}
-    >
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 font-semibold text-white marker:hidden">
-        <span className="flex items-center gap-2">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 20 20"
-            className="h-4 w-4 text-sky-200"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-          >
-            <circle cx="8.8" cy="8.8" r="5.8" />
-            <path d="m13 13 4 4M6.5 8.8h4.6M8.8 6.5v4.6" />
-          </svg>
-          Research professional VCT history
-        </span>
-        <span className="rounded-full border border-sky-200/25 bg-sky-300/10 px-2.5 py-1 text-xs text-sky-100">
-          {status?.available
-            ? `${Number(status.matches).toLocaleString()} series · ${status.first_season}–${status.latest_season}`
-            : 'Data archive'}
-        </span>
-      </summary>
-      <div className="mt-4 border-t border-white/10 pt-4">
-        <p className="max-w-3xl text-sm leading-6 text-white/65">
-          Search the tier-one professional archive separately from your own ranked sample. Season
-          records stay distinct; missing source coverage is shown as missing, never as zero.
-        </p>
-        {status?.coverageByRegion?.length > 0 && (
-          <details className="mt-3 text-xs text-white/55">
-            <summary className="w-fit cursor-pointer">
-              Latest season data coverage by region
-            </summary>
-            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-              {status.coverageByRegion.map((row) => (
-                <li key={row.region} className="rounded-lg bg-black/15 px-3 py-2">
-                  {row.region}: {Number(row.maps).toLocaleString()} maps; player stats on{' '}
-                  {fmt((100 * row.performance_maps) / row.maps)}%; economy on{' '}
-                  {fmt((100 * row.economy_maps) / row.maps)}%
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        <form onSubmit={search} className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <label className="sr-only" htmlFor="vct-search">
-            Search a professional player or team
-          </label>
-          <input
-            id="vct-search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            minLength={2}
-            maxLength={80}
-            placeholder="Search a player or team, e.g. aspas or Fnatic"
-            className="min-w-0 flex-1 rounded-lg border border-white/20 bg-[#0e1115] px-3 py-2.5 text-sm text-white placeholder:text-white/45"
-          />
-          <Button
-            type="submit"
-            isDisabled={busy || query.trim().length < 2}
-            variant="secondary"
-            className="!border !border-white/25 !bg-[#252c34] !text-white"
-          >
-            {busy ? 'Loading…' : 'Search archive'}
-          </Button>
-        </form>
-        {error && (
-          <p
-            role="alert"
-            className="mt-3 rounded-lg border border-rose-300/25 bg-rose-300/10 p-3 text-sm text-rose-100"
-          >
-            {error}
-          </p>
-        )}
-        {status && !status.available && (
-          <p className="mt-3 text-sm text-amber-100/80">
-            Archive not installed on this server. Run <code>npm run data:sync</code> to download the
-            licensed dataset snapshot.
-          </p>
-        )}
-        {results.length > 0 && (
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {results.map((item) => (
-              <li key={`${item.kind}-${item.id}`}>
-                <button
-                  type="button"
-                  onClick={() => select(item)}
-                  className="w-full rounded-lg border border-white/15 bg-black/15 px-3 py-3 text-left hover:border-sky-200/40"
-                >
-                  <span className="block font-medium text-white">{item.name}</span>
-                  <span className="text-xs capitalize text-white/50">
-                    {item.kind}
-                    {item.country ? ` · ${item.country}` : ''}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {p && (
-          <section
-            className="mt-4 rounded-xl border border-white/15 bg-black/15 p-4"
-            aria-live="polite"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-sky-200">
-                  {p.kind} · professional VCT data
-                </p>
-                <h3 className="mt-1 text-xl font-semibold">
-                  {p.player?.player_name || p.team?.team_name}
-                </h3>
-              </div>
-              <label className="text-xs text-white/60">
-                Season
-                <select
-                  value={season || p.season || ''}
-                  onChange={(event) =>
-                    select(
-                      { kind: p.kind, id: p.player?.player_id || p.team?.team_id },
-                      event.target.value,
-                    )
-                  }
-                  className="ml-2 rounded-md border border-white/20 bg-[#0e1115] px-2 py-2 text-sm text-white"
-                >
-                  {p.seasons.map((year) => (
-                    <option key={year.season} value={year.season}>
-                      {year.season}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {p.kind === 'player' && stat && (
-              <>
-                <p className="mt-3 text-xs text-white/55">
-                  {stat.matches_played} series · {stat.maps_played} maps · {stat.rounds ?? '—'}{' '}
-                  rounds · player-stat coverage {stat.performance_maps}/{stat.maps_played} maps
-                </p>
-                <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {[
-                    ['ACS', stat.acs],
-                    ['ADR', stat.adr],
-                    ['K/D', stat.kd],
-                    ['KAST', stat.kast === null ? null : `${fmt(stat.kast)}%`],
-                    ['HS%', stat.hs_pct === null ? null : `${fmt(stat.hs_pct)}%`],
-                    ['Kills / round', stat.kills_per_round],
-                    ['First bloods', stat.first_bloods],
-                    ['First deaths', stat.first_deaths],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-white/5 p-2.5">
-                      <dt className="text-xs text-white/50">{label}</dt>
-                      <dd className="mt-1 font-semibold">
-                        {typeof value === 'number' ? fmt(value) : (value ?? '—')}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-sm font-medium">Agent map sample</summary>
-                  <div className="mt-2 space-y-2">
-                    {p.agentBreakdown.map((agent) => (
-                      <div
-                        key={agent.agent}
-                        className="flex flex-wrap justify-between gap-2 border-b border-white/10 py-2 text-sm"
-                      >
-                        <span className="capitalize">
-                          {agent.agent} · {agent.maps_played} maps
-                        </span>
-                        <span className="text-white/65">
-                          ACS {fmt(agent.acs)} · ADR {fmt(agent.adr)} · K/D{' '}
-                          {fmt(agent.kills / (agent.deaths || 1))}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    Recent map history
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    {p.recentMaps.map((map) => (
-                      <article
-                        key={`${map.match_id}-${map.game_id}`}
-                        className="rounded-lg border border-white/10 p-3 text-xs"
-                      >
-                        <div className="flex flex-wrap justify-between gap-1">
-                          <span>
-                            {map.utc_timestamp?.slice(0, 10)} · {map.event}
-                          </span>
-                          <span>
-                            {map.map_name} {map.player_map_score}–{map.opponent_map_score}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-white/60">
-                          {map.team} vs {map.opponent} · {map.patch || 'patch unavailable'} ·{' '}
-                          {map.performance_available
-                            ? `ACS ${fmt(map.acs)} · ADR ${fmt(map.adr)}`
-                            : 'player stats unavailable'}
-                        </p>
-                        {map.match_source_url && (
-                          <a
-                            href={map.match_source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 inline-block text-sky-200 underline"
-                          >
-                            Open match source ↗
-                          </a>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                </details>
-              </>
-            )}
-            {p.kind === 'team' && (
-              <>
-                <p className="mt-3 text-xs text-white/55">
-                  {p.summary?.matches} series · {p.summary?.series_wins} series wins ·{' '}
-                  {p.summary?.maps} maps · {p.summary?.performance_maps} maps with player-stat
-                  coverage
-                </p>
-                <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {[
-                    ['Series win rate', p.summary?.series_win_pct],
-                    ['Map win rate', p.summary?.map_win_pct],
-                    ['Series', p.summary?.matches],
-                    ['Maps', p.summary?.maps],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-white/5 p-2.5">
-                      <dt className="text-xs text-white/50">{label}</dt>
-                      <dd className="mt-1 font-semibold">
-                        {value === null || value === undefined
-                          ? '—'
-                          : label.includes('rate')
-                            ? `${fmt(value)}%`
-                            : value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    Map pool and recent series
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    {p.mapPool.map((map) => (
-                      <p key={map.map_name} className="text-sm text-white/70">
-                        {map.map_name}: {map.map_wins}/{map.maps} wins
-                      </p>
-                    ))}
-                    {p.matches.map((match) => (
-                      <p
-                        key={match.match_id}
-                        className="border-t border-white/10 py-2 text-xs text-white/65"
-                      >
-                        {match.utc_timestamp?.slice(0, 10)} · {match.event} · {match.team}{' '}
-                        {match.team_score}–{match.opponent_score} {match.opponent}{' '}
-                        {match.won ? '· Win' : '· Loss'}
-                        {match.match_source_url && (
-                          <>
-                            {' '}
-                            ·{' '}
-                            <a
-                              href={match.match_source_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-sky-200 underline"
-                            >
-                              source ↗
-                            </a>
-                          </>
-                        )}
-                      </p>
-                    ))}
-                  </div>
-                </details>
-              </>
-            )}
-            <p className="mt-4 border-t border-white/10 pt-3 text-xs text-white/45">
-              Source:{' '}
-              <a
-                href={p.source.datasetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sky-200 underline"
-              >
-                VCT Reference ↗
-              </a>{' '}
-              · retrieved {p.source.snapshotRetrievedAt?.slice(0, 10)} · snapshot{' '}
-              {p.source.snapshotSha256?.slice(0, 12)}. Rates are descriptive archive totals, not
-              rank or role adjusted.
-            </p>
-          </section>
-        )}
-      </div>
-    </details>
-  );
-}
-
 /* ---------- page ---------- */
 export default function ValorantAnalyzer() {
   const [step, setStep] = useState('confirm');
@@ -1044,8 +681,9 @@ export default function ValorantAnalyzer() {
                 Add agent and role results
               </summary>
               <p className="mt-2 text-sm leading-5 text-white/60">
-                These results appear only when you enter them here or import a tracker screenshot.
-                Example data does not invent agent or role splits.
+                Enter these results manually when you have them. Unavailable splits stay blank and
+                are never filled with example values. Example data does not invent agent or role
+                splits.
               </p>
               <h3 className="mt-5 text-sm font-semibold text-white/85">Results by role</h3>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1285,7 +923,34 @@ export default function ValorantAnalyzer() {
           </section>
         )}
 
-        <VctResearch />
+        <section className={`${panel} mt-5`}>
+          <h2 className="font-semibold text-white">Professional VCT research</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/65">
+            This GitHub Pages version runs entirely in your browser. Explore professional match
+            history and source coverage on VCT Reference, then enter the relevant stats above for
+            your own analysis.
+          </p>
+          <a
+            href="https://vct-reference.com/"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg border border-sky-200/25 bg-sky-300/10 px-4 py-2 text-sm font-medium text-sky-100 hover:bg-sky-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-200"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            >
+              <circle cx="8.8" cy="8.8" r="5.8" />
+              <path d="m13 13 4 4M6.5 8.8h4.6M8.8 6.5v4.6" />
+            </svg>
+            Open VCT Reference
+            <span aria-hidden="true">↗</span>
+          </a>
+        </section>
 
         {step === 'result' && res && (
           <section className="motion-enter mt-8">
