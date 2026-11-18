@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "@heroui/styles";
+@import 'tailwindcss';
+@import '@heroui/styles';
 
 @keyframes vpa-enter {
   from {
@@ -31,7 +31,7 @@
 }
 
 /* Keep the result navigation horizontal and scannable across screen sizes. */
-.results-tabs [role="tablist"] {
+.results-tabs [role='tablist'] {
   display: grid !important;
   width: 100%;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -42,7 +42,7 @@
   background: #191e24;
 }
 
-.results-tabs [role="tab"] {
+.results-tabs [role='tab'] {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -60,23 +60,23 @@
   cursor: pointer;
 }
 
-.results-tabs [role="tab"][aria-selected="true"] {
+.results-tabs [role='tab'][aria-selected='true'] {
   border-color: rgb(255 100 112 / 38%);
   background: rgb(255 70 85 / 14%);
   color: #fff;
 }
 
-.results-tabs [role="tab"]:focus-visible {
+.results-tabs [role='tab']:focus-visible {
   outline: 2px solid #ff9299;
   outline-offset: 2px;
 }
 
 @media (max-width: 640px) {
-  .results-tabs [role="tablist"] {
+  .results-tabs [role='tablist'] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .results-tabs [role="tab"]:last-child {
+  .results-tabs [role='tab']:last-child {
     grid-column: 1 / -1;
   }
 }

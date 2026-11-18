@@ -6,5 +6,5 @@ import ValorantAnalyzer from './ValorantAnalyzer.jsx';
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ValorantAnalyzer />
-  </StrictMode>
+  </StrictMode>,
 );

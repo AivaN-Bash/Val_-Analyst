@@ -14,7 +14,18 @@ const STATE_PATH = path.join(DATA_DIR, 'vct-source-state.json');
 const URL = 'https://vct-reference.com/dataset/vct.duckdb';
 const TERMS_URL = 'https://vct-reference.com/terms';
 const MAX_BYTES = 60 * 1024 * 1024;
-const REQUIRED_TABLES = ['matches', 'maps', 'rounds', 'player_map', 'players', 'teams', 'notables', 'kill_matrix', 'stat_source', 'feed_fill_meta'];
+const REQUIRED_TABLES = [
+  'matches',
+  'maps',
+  'rounds',
+  'player_map',
+  'players',
+  'teams',
+  'notables',
+  'kill_matrix',
+  'stat_source',
+  'feed_fill_meta',
+];
 
 async function sha256(filePath) {
   const hash = crypto.createHash('sha256');
@@ -24,17 +35,26 @@ async function sha256(filePath) {
 
 async function download(filePath) {
   const response = await fetch(URL, { signal: AbortSignal.timeout(120_000) });
-  if (!response.ok || !response.body) throw new Error(`Dataset download failed with HTTP ${response.status}.`);
+  if (!response.ok || !response.body)
+    throw new Error(`Dataset download failed with HTTP ${response.status}.`);
   const contentLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_BYTES) throw new Error('Dataset exceeds the 60 MB safety limit.');
+  if (Number.isFinite(contentLength) && contentLength > MAX_BYTES)
+    throw new Error('Dataset exceeds the 60 MB safety limit.');
   let bytes = 0;
   const limiter = new Transform({
     transform(chunk, _encoding, callback) {
       bytes += chunk.length;
-      callback(bytes > MAX_BYTES ? new Error('Dataset exceeds the 60 MB safety limit.') : null, chunk);
+      callback(
+        bytes > MAX_BYTES ? new Error('Dataset exceeds the 60 MB safety limit.') : null,
+        chunk,
+      );
     },
   });
-  await pipeline(Readable.fromWeb(response.body), limiter, createWriteStream(filePath, { flags: 'wx' }));
+  await pipeline(
+    Readable.fromWeb(response.body),
+    limiter,
+    createWriteStream(filePath, { flags: 'wx' }),
+  );
   if (bytes < 1024 * 1024) throw new Error('Dataset download was unexpectedly small.');
 }
 
@@ -42,7 +62,9 @@ async function validateSnapshot(filePath) {
   const instance = await DuckDBInstance.create(filePath, { access_mode: 'READ_ONLY' });
   const connection = await instance.connect();
   try {
-    const tableRows = await connection.runAndReadAll("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'");
+    const tableRows = await connection.runAndReadAll(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'",
+    );
     const tableNames = new Set(tableRows.getRowObjectsJson().map((row) => row.table_name));
     const missing = REQUIRED_TABLES.filter((name) => !tableNames.has(name));
     if (missing.length) throw new Error(`Dataset is missing tables: ${missing.join(', ')}.`);
@@ -51,8 +73,13 @@ async function validateSnapshot(filePath) {
       FROM matches WHERE listing_status = 'Completed' AND is_showmatch = FALSE
     `);
     const summary = summaryReader.getRowObjectsJson()[0];
-    if (Number(summary.matches) < 100 || !summary.first_season || !summary.latest_season) throw new Error('Dataset passed its table check but has incomplete match history.');
-    return { matches: Number(summary.matches), firstSeason: summary.first_season, latestSeason: summary.latest_season };
+    if (Number(summary.matches) < 100 || !summary.first_season || !summary.latest_season)
+      throw new Error('Dataset passed its table check but has incomplete match history.');
+    return {
+      matches: Number(summary.matches),
+      firstSeason: summary.first_season,
+      latestSeason: summary.latest_season,
+    };
   } finally {
     connection.closeSync();
     instance.closeSync();
@@ -66,7 +93,8 @@ async function main() {
     const localInput = process.argv[2] ? path.resolve(process.argv[2]) : null;
     if (localInput) {
       const info = await fs.stat(localInput);
-      if (info.size > MAX_BYTES || info.size < 1024 * 1024) throw new Error('Local dataset size failed validation.');
+      if (info.size > MAX_BYTES || info.size < 1024 * 1024)
+        throw new Error('Local dataset size failed validation.');
       await fs.copyFile(localInput, tempPath);
     } else {
       console.log(`Downloading current snapshot from ${URL}`);
@@ -97,7 +125,9 @@ async function main() {
     const tempStatePath = `${STATE_PATH}.${process.pid}.tmp`;
     await fs.writeFile(tempStatePath, `${JSON.stringify(state, null, 2)}\n`, { flag: 'wx' });
     await fs.rename(tempStatePath, STATE_PATH);
-    console.log(`Installed VCT snapshot ${digest.slice(0, 12)}: ${summary.matches} completed series, seasons ${summary.firstSeason}–${summary.latestSeason}.`);
+    console.log(
+      `Installed VCT snapshot ${digest.slice(0, 12)}: ${summary.matches} completed series, seasons ${summary.firstSeason}–${summary.latestSeason}.`,
+    );
     console.log(`Previous snapshots remain in ${path.relative(ROOT, SNAPSHOT_DIR)}.`);
   } finally {
     await fs.rm(tempPath, { force: true });

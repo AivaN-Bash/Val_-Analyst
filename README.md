@@ -29,6 +29,16 @@ npm run dev
 
 The Vite client runs on port 5173 and the Express API runs on port 8787. Manual analysis works without an API key. Set `ANTHROPIC_API_KEY` in `.env` only if you use the screenshot extraction endpoint.
 
+## Code quality
+
+The repository uses ESLint flat config for JavaScript, JSX, React, and Hooks, and Prettier for consistent formatting. VS Code is configured to format on save and apply safe ESLint fixes. Run the full local quality gate before pushing:
+
+```bash
+npm run check
+```
+
+This checks formatting, lint rules, and the production build. Use `npm run lint` or `npm run format` when working on just one part of that workflow.
+
 `npm run data:sync` downloads and validates the VCT Reference DuckDB snapshot. It stores snapshots under `data/vct-snapshots/`, which is intentionally ignored by Git because it is source data, not application code. Each refresh creates a content-addressed copy and updates the local pointer; earlier snapshots are retained. Run this command on the deployment host or in its data preparation step before starting the server.
 
 ## Build and deploy
