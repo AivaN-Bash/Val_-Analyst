@@ -13,6 +13,7 @@ export const PLAYSTYLE_NAMES = {
 
 export const PLAYSTYLE_MIN_ALIGNMENT = 50;
 export const PLAYSTYLE_MIN_LEAD = 15;
+export const PLAYSTYLE_MIN_QUESTION_COVERAGE = 3;
 export const ANALYSIS_MODEL_VERSION = '1.0.0';
 
 const ROLE_KEYS = Object.keys(PLAYSTYLE_NAMES).filter((key) => key !== 'balanced');
@@ -156,29 +157,41 @@ export function analyzePlayer(stats, answers, questions) {
       const opportunity = maximum - minimum;
       if (opportunity <= 0) return;
       possibleScores[key] += opportunity;
-      const chosen = selected[key] || 0;
-      const contribution = Math.max(0, Math.min(opportunity, chosen - minimum));
-      rawScores[key] += contribution;
       answerBreakdown[key].push({
         question,
         answer: selectedLabel,
-        contribution,
+        contribution: 0,
         opportunity,
-        alignment: Math.round((contribution / opportunity) * 100),
+        alignment: 0,
       });
+      const chosen = selected[key] || 0;
+      const contribution = Math.max(0, Math.min(opportunity, chosen - minimum));
+      rawScores[key] += contribution;
+      const evidence = answerBreakdown[key][answerBreakdown[key].length - 1];
+      evidence.contribution = contribution;
+      evidence.alignment = Math.round((contribution / opportunity) * 100);
     });
   });
-  const sc = Object.fromEntries(ROLE_KEYS.map((key) => [key, possibleScores[key] ? Math.round((rawScores[key] / possibleScores[key]) * 100) : 0]));
-  const ranked = Object.entries(sc).sort((a, b) => b[1] - a[1]);
-  const clearLead = ranked[0][1] >= PLAYSTYLE_MIN_ALIGNMENT && ranked[0][1] - ranked[1][1] >= PLAYSTYLE_MIN_LEAD;
-  const top = clearLead ? ranked[0][0] : 'balanced';
+  const coverage = Object.fromEntries(ROLE_KEYS.map((key) => [key, answerBreakdown[key].length]));
+  const rawAlignment = Object.fromEntries(ROLE_KEYS.map((key) => [key, possibleScores[key] ? Math.round((rawScores[key] / possibleScores[key]) * 100) : 0]));
+  const eligible = ROLE_KEYS.filter((key) => coverage[key] >= PLAYSTYLE_MIN_QUESTION_COVERAGE).sort((a, b) => rawAlignment[b] - rawAlignment[a]);
+  const ranked = ROLE_KEYS.slice().sort((a, b) => rawAlignment[b] - rawAlignment[a]);
+  const sc = Object.fromEntries(ROLE_KEYS.map((key) => [key, coverage[key] >= PLAYSTYLE_MIN_QUESTION_COVERAGE ? rawAlignment[key] : null]));
+  const candidateKey = eligible[0] || ranked[0];
+  const runnerUpKey = eligible[1] || ranked.find((key) => key !== candidateKey);
+  const candidateAlignment = rawAlignment[candidateKey];
+  const runnerUpAlignment = runnerUpKey ? rawAlignment[runnerUpKey] : 0;
+  const clearLead = eligible.length > 0 && candidateAlignment >= PLAYSTYLE_MIN_ALIGNMENT && candidateAlignment - runnerUpAlignment >= PLAYSTYLE_MIN_LEAD;
+  const top = clearLead ? candidateKey : 'balanced';
   const decisionRationale = {
     clearLead,
-    candidate: { key: ranked[0][0], name: PLAYSTYLE_NAMES[ranked[0][0]], alignment: ranked[0][1] },
-    runnerUp: { key: ranked[1][0], name: PLAYSTYLE_NAMES[ranked[1][0]], alignment: ranked[1][1] },
+    candidate: { key: candidateKey, name: PLAYSTYLE_NAMES[candidateKey], alignment: candidateAlignment, coverage: coverage[candidateKey], eligible: coverage[candidateKey] >= PLAYSTYLE_MIN_QUESTION_COVERAGE },
+    runnerUp: runnerUpKey ? { key: runnerUpKey, name: PLAYSTYLE_NAMES[runnerUpKey], alignment: rawAlignment[runnerUpKey], coverage: coverage[runnerUpKey], eligible: coverage[runnerUpKey] >= PLAYSTYLE_MIN_QUESTION_COVERAGE } : null,
+    coverage,
+    minimumQuestionCoverage: PLAYSTYLE_MIN_QUESTION_COVERAGE,
     minimumAlignment: PLAYSTYLE_MIN_ALIGNMENT,
     minimumLead: PLAYSTYLE_MIN_LEAD,
-    evidence: answerBreakdown[top === 'balanced' ? ranked[0][0] : top],
+    evidence: answerBreakdown[candidateKey],
   };
 
   const findings = [];
