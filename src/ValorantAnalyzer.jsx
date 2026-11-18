@@ -285,13 +285,13 @@ export default function ValorantAnalyzer() {
               </details>
             </div>
 
-            <Tabs defaultSelectedKey="overview" className="mt-6 w-full min-w-0">
-              <TabList aria-label="Results" className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-                <Tab id="overview" className="min-w-0 justify-center px-2 text-center text-xs leading-4 !text-white sm:text-sm" style={{ color: '#f4f4f5' }}>Summary</Tab>
-                <Tab id="dimensions" className="min-w-0 justify-center px-2 text-center text-xs leading-4 !text-white sm:text-sm" style={{ color: '#f4f4f5' }}>Seven dimensions</Tab>
-                <Tab id="deep" className="min-w-0 justify-center px-2 text-center text-xs leading-4 !text-white sm:text-sm" style={{ color: '#f4f4f5' }}>Deep dive</Tab>
-                <Tab id="trends" className="min-w-0 justify-center px-2 text-center text-xs leading-4 !text-white sm:text-sm" style={{ color: '#f4f4f5' }}>Trends</Tab>
-                <Tab id="share" className="min-w-0 justify-center px-2 text-center text-xs leading-4 !text-white sm:text-sm" style={{ color: '#f4f4f5' }}>Share summary</Tab>
+            <Tabs defaultSelectedKey="overview" className="results-tabs mt-6 w-full min-w-0">
+              <TabList aria-label="Results" className="results-tab-list">
+                <Tab id="overview">Summary</Tab>
+                <Tab id="dimensions">Seven dimensions</Tab>
+                <Tab id="deep">Deep dive</Tab>
+                <Tab id="trends">Trends</Tab>
+                <Tab id="share">Share summary</Tab>
               </TabList>
 
               <TabPanel id="overview">
