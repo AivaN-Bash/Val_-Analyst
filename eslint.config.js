@@ -1,5 +1,4 @@
 import js from '@eslint/js';
-import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import { defineConfig } from 'eslint/config';
@@ -22,20 +21,22 @@ export default defineConfig([
       },
     },
     plugins: {
-      react,
       'react-hooks': reactHooks,
-    },
-    settings: {
-      react: { version: 'detect' },
     },
     rules: {
       ...js.configs.recommended.rules,
-      ...react.configs.recommended.rules,
-      ...react.configs['jsx-runtime'].rules,
-      'react/prop-types': 'off',
-      'react/react-in-jsx-scope': 'off',
+      'no-unused-vars': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
+  {
+    files: ['**/*.js'],
+    rules: {
+      'no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
 ]);

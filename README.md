@@ -31,7 +31,7 @@ The Vite client runs on port 5173 and the Express API runs on port 8787. Manual 
 
 ## Code quality
 
-The repository uses ESLint flat config for JavaScript, JSX, React, and Hooks, and Prettier for consistent formatting. VS Code is configured to format on save and apply safe ESLint fixes. Run the full local quality gate before pushing:
+The repository uses ESLint flat config for JavaScript and React Hooks, and Prettier for consistent formatting. VS Code is configured to format on save and apply safe ESLint fixes. Run the full local quality gate before pushing:
 
 ```bash
 npm run check
