@@ -2,6 +2,8 @@
 
 An evidence-first VALORANT player analysis prototype. It combines entered match aggregates with a 20-question decision profile, while keeping measured stats separate from self-reported tendencies.
 
+It also includes a separate professional VCT archive explorer backed by the downloadable VCT Reference dataset. Archive values are never merged into the user's ranked baseline or questionnaire result.
+
 ## What it does
 
 - Preserves the player's entered values and questionnaire answers locally with a timestamp and analytics model version.
@@ -21,11 +23,13 @@ Consistency requires per-match records, and reliable percentiles, z-scores, Baye
 
 ```bash
 npm install
-cp .env.example .env
+npm run data:sync
 npm run dev
 ```
 
 The Vite client runs on port 5173 and the Express API runs on port 8787. Manual analysis works without an API key. Set `ANTHROPIC_API_KEY` in `.env` only if you use the screenshot extraction endpoint.
+
+`npm run data:sync` downloads and validates the VCT Reference DuckDB snapshot. It stores snapshots under `data/vct-snapshots/`, which is intentionally ignored by Git because it is source data, not application code. Each refresh creates a content-addressed copy and updates the local pointer; earlier snapshots are retained. Run this command on the deployment host or in its data preparation step before starting the server.
 
 ## Build and deploy
 
@@ -41,6 +45,9 @@ The production server serves `dist/` and the API from one Node process. Configur
 - `src/analytics/player-analysis.js` validates available numeric inputs, calculates supported metrics, exposes availability and formula metadata, and creates separate survey-based tendencies.
 - `src/ValorantAnalyzer.jsx` collects data and presents findings, dimensions, evidence, and recommendations.
 - `server/index.js` validates screenshot-extraction responses and enforces upload limits.
+- `server/vct-data.js` exposes read-only, rate-limited VCT archive search and player, team, match, and round endpoints.
+- `scripts/sync-vct-data.js` downloads, hashes, schema-checks, and installs immutable local dataset snapshots.
+- `docs/data-sources.md` records source coverage, access constraints, and known gaps.
 
 Analysis snapshots are stored in browser local storage. They include the original entered form values and answers; older snapshots remain readable by the trend view.
 
