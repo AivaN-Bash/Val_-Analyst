@@ -16,7 +16,7 @@ export const PLAYSTYLE_MIN_LEAD = 15;
 export const PLAYSTYLE_MIN_QUESTION_COVERAGE = 3;
 export const PLAYSTYLE_MIN_MATCHING_ANSWERS = 2;
 export const FLEX_MIN_MATCHING_ANSWERS = 3;
-export const ANALYSIS_MODEL_VERSION = '1.0.0';
+export const ANALYSIS_MODEL_VERSION = '1.1.0';
 
 const ROLE_KEYS = Object.keys(PLAYSTYLE_NAMES).filter((key) => key !== 'balanced');
 const INPUT_KEYS = ['acs', 'adr', 'totalDamage', 'kd', 'kast', 'hs', 'win', 'kpr', 'kills', 'deaths', 'assists', 'firstBloods', 'matches', 'rounds', 'roundsSurvived', 'firstDeaths', 'tradeKills', 'clutchAttempts', 'clutchWins'];
@@ -71,7 +71,7 @@ function wilsonInterval(successes, attempts) {
 
 function formatMetricValue(item) {
   if (item.availabilityStatus === 'unavailable') return 'Not available';
-  if (Array.isArray(item.value)) return item.value.map((entry) => Array.isArray(entry) ? `${entry[0]}: ${entry[1]}%` : `${entry.name}: ${entry.wr}% (${entry.m} matches)`).join(' · ');
+  if (Array.isArray(item.value)) return item.value.map((entry) => Array.isArray(entry) ? `${entry[0]}: ${entry[1]}%` : `${entry.name}: ${entry.wr}%${entry.m !== null ? ` (${entry.m} matches)` : ''}`).join(' · ');
   if (typeof item.value === 'object') return `${Object.keys(item.value).length} agent records`;
   return `${item.value}${item.unit}`;
 }
@@ -94,7 +94,7 @@ export function analyzePlayer(stats, answers, questions) {
   const clutchAttempts = get('clutchAttempts');
   const clutchWins = get('clutchWins');
   const agentRecords = (Array.isArray(stats.agents) ? stats.agents : []).filter((agent) => agent.name?.trim() && ['m', 'wr', 'kd', 'adr', 'acs'].every((key) => agent[key] !== '' && Number.isFinite(Number(agent[key]))));
-  const roleRecords = Object.entries(stats.roles || {}).filter(([, result]) => result.wr !== '' && result.kda !== '' && Number.isFinite(Number(result.wr)) && Number.isFinite(Number(result.kda)));
+  const roleRecords = Object.entries(stats.roles || {}).filter(([, result]) => result && result.wr !== '' && result.kda !== '' && Number.isFinite(Number(result.wr)) && Number.isFinite(Number(result.kda)));
   if (clutchAttempts !== null && clutchWins !== null && clutchWins > clutchAttempts) dataWarnings.push('Clutch wins cannot exceed clutch attempts; clutch conversion was withheld.');
   if (rounds !== null && firstBloods !== null && firstBloods > rounds) dataWarnings.push('First bloods exceed rounds played; check that these values cover the same matches.');
   if (rounds !== null && firstDeaths !== null && firstDeaths > rounds) dataWarnings.push('First deaths exceed rounds played; check that these values cover the same matches.');
@@ -152,7 +152,7 @@ export function analyzePlayer(stats, answers, questions) {
     metric({ name: 'Clutch conversion', dimension: 'clutch', value: values.clutchConversion, formula: 'Clutch wins / clutch attempts * 100', sourceFields: ['clutchWins', 'clutchAttempts'], unit: '%', direction: 'Higher is favorable; report with attempts', sampleSize, confidenceInterval: wilsonInterval(clutchWins, clutchAttempts) }),
     metric({ name: 'Match-to-match variation', dimension: 'consistency', value: null, formula: 'Requires per-match metric values (for example, ADR standard deviation)', sourceFields: ['perMatchStats'], direction: 'Lower variation can indicate consistency', sampleSize }),
     metric({ name: 'Agent results', dimension: 'adaptability', value: agentRecords.length ? agentRecords.map((agent) => ({ name: agent.name, m: Number(agent.m), wr: Number(agent.wr), kd: Number(agent.kd), adr: Number(agent.adr), acs: Number(agent.acs) })) : null, formula: 'Win percentage, K/D, ADR, and ACS are supplied aggregates; deriving rates requires per-agent match wins and round totals', sourceFields: ['agents.name', 'agents.m', 'agents.wr', 'agents.kd', 'agents.adr', 'agents.acs'], direction: 'Compare with adequate agent sample and rank, map, patch, and team context', sampleSize }),
-    metric({ name: 'Role results', dimension: 'adaptability', value: roleRecords.length ? roleRecords.map(([role, result]) => [role, Number(result.wr)]) : null, formula: 'Role win rate = wins on role / matches on role * 100; this form records the supplied aggregate', sourceFields: ['roles.wr', 'roles.kda'], direction: 'Compare with adequate sample and team context', sampleSize }),
+    metric({ name: 'Role results', dimension: 'adaptability', value: roleRecords.length ? roleRecords.map(([role, result]) => ({ name: role, m: result.m !== '' && result.m !== null && result.m !== undefined && Number.isFinite(Number(result.m)) ? Number(result.m) : null, wr: Number(result.wr), kda: Number(result.kda) })) : null, formula: 'Win rate and KDA are supplied aggregates; deriving them requires role-level wins, kills, deaths, and match records', sourceFields: ['roles.m', 'roles.wr', 'roles.kda'], direction: 'Compare with adequate sample and team context', sampleSize }),
     metric({ name: 'Map and side results', dimension: 'adaptability', value: null, formula: 'Requires match-level map and side data', sourceFields: ['map', 'side'], direction: 'Context dependent', sampleSize }),
   ];
 
@@ -225,6 +225,63 @@ export function analyzePlayer(stats, answers, questions) {
     evidence: answerBreakdown[candidateKey],
   };
 
+  const impactObservations = [];
+  const recordObservation = (title, evidence, reading, limitation) => impactObservations.push({ title, evidence, reading, limitation });
+  if (firstBloods !== null && firstDeaths !== null) {
+    recordObservation(
+      'Opening advantage and risk',
+      `The sample records ${firstBloods} first bloods and ${firstDeaths} first deaths${rounds ? ` across ${rounds} rounds` : ''}; net opening differential: ${firstBloods - firstDeaths}${values.openingDifferentialPerRound !== null ? ` (${values.openingDifferentialPerRound.toFixed(3)} per round)` : ''}.`,
+      'This puts opening creation and opening risk side by side. A positive count differential describes the record; it does not prove those openings converted into round wins.',
+      'No round-state conversion or peer-role benchmark is connected.'
+    );
+  }
+  recordObservation('Advantage conversion', 'Unavailable: no round-state transitions or post-opening round outcomes were entered.', 'An opening kill is an opportunity signal. Conversion requires tracking whether the team won the round after gaining that advantage.', 'Round-level state and outcome records are required.');
+  if (values.adr !== null || values.kpr !== null || values.acs !== null) {
+    const evidence = [values.adr !== null && `ADR ${values.adr.toFixed(1)}`, values.kpr !== null && `KPR ${values.kpr.toFixed(2)}`, values.acs !== null && `ACS ${values.acs.toFixed(1)}`].filter(Boolean).join(' · ');
+    recordObservation('Individual production', evidence, 'These measures describe personal output. They do not establish team impact, quality of damage timing, or whether utility and trades enabled the production.', 'A comparable rank, role, agent, map, and patch cohort is unavailable.');
+  }
+  const teamEvidence = [values.kast !== null && `KAST ${values.kast}%`, values.assistsPerRound !== null && `assists ${values.assistsPerRound.toFixed(2)} per round`, values.tradeKillsPerRound !== null && `trades ${values.tradeKillsPerRound.toFixed(2)} per round`].filter(Boolean).join(' · ');
+  if (teamEvidence) recordObservation('Team involvement', teamEvidence, 'These are participation signals. They do not show whether the assist, trade, or survival changed the round outcome.', 'No team-level event timeline or role benchmark is available.');
+  if (values.survivalRate !== null || values.deathsPerRound !== null) {
+    const evidence = [values.survivalRate !== null && `survival ${values.survivalRate.toFixed(1)}%`, values.deathsPerRound !== null && `deaths ${values.deathsPerRound.toFixed(2)} per round`].filter(Boolean).join(' · ');
+    recordObservation('Survival and round participation', evidence, 'Read survival alongside KAST, role, and whether the player preserved a useful advantage; staying alive alone is not always the best outcome.', 'No position, round-state, or role-specific comparison is connected.');
+  }
+  if (values.adr !== null && values.survivalRate !== null) recordObservation(
+    'Damage and survival trade-off check',
+    `ADR ${values.adr.toFixed(1)} alongside ${values.survivalRate.toFixed(1)}% survival.`,
+    'Both measures are shown together, but the app does not infer that damage caused survival changes or that one was traded for the other.',
+    'Their relationship needs paired per-match or per-round records and a relevant role benchmark.'
+  );
+  if (values.clutchConversion !== null) {
+    const interval = wilsonInterval(clutchWins, clutchAttempts);
+    recordObservation('Clutch outcomes', `${clutchWins} wins from ${clutchAttempts} attempts (${values.clutchConversion.toFixed(1)}%)${interval ? `; 95% Wilson interval ${interval.lower.toFixed(1)}–${interval.upper.toFixed(1)}%` : ''}.`, 'The attempt count and interval show uncertainty; they do not measure performance against comparable clutch situations.', 'No opponent, time, economy, or clutch-state benchmark is available.');
+  }
+  recordObservation('Consistency and performance floor', 'Unavailable from aggregate totals.', 'Average or total statistics cannot show match-to-match variation or weaker-match performance.', 'Per-match records are needed to calculate variation and a performance floor.');
+  const roleSpan = roleRecords.filter(([, result]) => Number.isFinite(Number(result.m)) && Number(result.m) > 0);
+  recordObservation('Tactical adaptability', roleSpan.length >= 2
+    ? `Role-level win-rate aggregates were entered for ${roleSpan.length} roles with match counts.`
+    : 'Map, side, and sufficient role-level match data are not available.',
+  roleSpan.length >= 2 ? 'These aggregates can describe outcomes by role, but do not show that the player adapted tactically or that role differences are meaningful.' : 'No adaptability claim is made from agent selection or unsplit totals.',
+  'Map and side splits, role context, and adequately sized samples are needed for a tactical comparison.');
+
+  const signalEvidence = Object.fromEntries(['entry', 'read', 'map', 'surv'].map((key) => [key, []]));
+  questions.forEach(([question, options], index) => {
+    const selected = answers[index];
+    if (!selected) return;
+    const label = options.find(([, points]) => JSON.stringify(points) === JSON.stringify(selected))?.[0] || 'Answer not available';
+    for (const key of Object.keys(signalEvidence)) if (selected[key] > 0) signalEvidence[key].push({ question, answer: label });
+  });
+  const behavioralProfiles = [];
+  const addBehaviorHypothesis = (name, signal, minimum, description) => {
+    const evidence = signalEvidence[signal];
+    if (evidence.length >= minimum) behavioralProfiles.push({ name, status: 'Questionnaire hypothesis', description, evidence });
+  };
+  addBehaviorHypothesis('Space Creator', 'entry', 2, 'Multiple answers favor taking or creating space. Check opening-round footage to confirm whether those choices create safe advantages.');
+  addBehaviorHypothesis('Information Enabler', 'read', 2, 'Multiple answers favor gathering information before rotations or commits. Validate the timing and value of that information in round records.');
+  addBehaviorHypothesis('Map Controller', 'map', 2, 'Multiple answers favor holding or managing map space. The current sample cannot verify which areas were controlled or for how long.');
+  addBehaviorHypothesis('Round Stabilizer', 'surv', 2, 'Multiple answers favor preserving a weapon or avoiding low-value risk. Check whether those saves preserve team economy and round advantage.');
+  if (matchingSignals.flex >= FLEX_MIN_MATCHING_ANSWERS) behavioralProfiles.push({ name: 'Flexible Playmaker', status: 'Questionnaire hypothesis', description: 'Your answers repeatedly favor changing role to fit the map or composition. Role and map match records are needed to confirm that this flexibility improves outcomes.', evidence: answerBreakdown.flex.filter((answer) => answer.contribution > 0) });
+
   const findings = [];
   const add = (type, text, source = 'answers') => findings.push({
     type,
@@ -271,12 +328,40 @@ export function analyzePlayer(stats, answers, questions) {
   if (!stats.roles || !Object.keys(stats.roles).length || !Array.isArray(stats.agents) || !stats.agents.length) recommendations.push('Record results by agent, role, map, and side to evaluate adaptability without mixing different contexts.');
   recommendations.push('Keep a per-match record of core stats; aggregate totals cannot show match-to-match consistency or identify outlier games.');
 
+  const reviewPlan = [];
+  const addReview = (title, evidence, benchmark, uncertainty, why, action) => reviewPlan.push({ title, evidence, benchmark, uncertainty, why, action });
+  if (firstBloods !== null && firstDeaths !== null) addReview(
+    'Review opening-round conversion',
+    `${firstBloods} first bloods, ${firstDeaths} first deaths${rounds ? ` over ${rounds} rounds` : ''}; net differential ${firstBloods - firstDeaths}.`,
+    'No role- and rank-matched benchmark or round-win conversion data.',
+    'The counts show opening outcomes, not whether the team converted the resulting advantage.',
+    'Separating duel creation from opening risk helps avoid treating first bloods or deaths alone as impact.',
+    'Review opening rounds with the next 10 seconds of team movement and whether the first advantage became a won round.'
+  );
+  if (values.adr !== null) addReview(
+    'Connect damage to round value',
+    `Recorded ADR: ${values.adr.toFixed(1)}${values.kd !== null ? `; K/D: ${values.kd.toFixed(2)}` : ''}.`,
+    'No comparable cohort or event-timing data.',
+    'Aggregate damage and K/D cannot show damage timing, trades, utility setup, or whether damage changed round outcomes.',
+    'Scoreboard production and team impact are different questions.',
+    'Review high-damage rounds for trade follow-up, space gained, and round result before targeting aim or aggression as a weakness.'
+  );
+  if (values.clutchConversion !== null) {
+    const interval = wilsonInterval(clutchWins, clutchAttempts);
+    addReview('Review clutch situations', `${clutchWins} wins from ${clutchAttempts} attempts (${values.clutchConversion.toFixed(1)}%)${interval ? `; Wilson interval ${interval.lower.toFixed(1)}–${interval.upper.toFixed(1)}%` : ''}.`, 'No benchmark for comparable clutch state, economy, or opponent.', 'The interval describes sampling uncertainty only; it does not adjust for clutch difficulty.', 'Clutch conversion needs the number and difficulty of attempts beside the rate.', 'Tag each attempt by player count, time, utility, and economy, then compare like situations.');
+  }
+  addReview('Build a match-level baseline', 'This analysis currently uses aggregate totals; consistency and a performance floor are unavailable.', 'A player-specific per-match series is needed before comparison.', 'Averages can hide weak matches, outliers, and changing form.', 'Trend and consistency claims need multiple ordered match records.', 'Save per-match rounds, kills, deaths, ADR, KAST, role, agent, map, and side.');
+  addReview('Add a comparison group', 'No peer cohort is connected to this analysis.', 'Use the same rank, mode, patch, and relevant role or agent.', 'Without a cohort, the app cannot say that a value is above or below expectation.', 'Benchmarking is required before calling a statistical strength or weakness.', 'Connect a sufficiently large reference dataset before ranking, percentile, or context-adjusted claims.');
+
   return {
     analysisModelVersion: ANALYSIS_MODEL_VERSION,
     sc,
     top,
     name: PLAYSTYLE_NAMES[top],
     decisionRationale,
+    impactObservations,
+    behavioralProfiles,
+    reviewPlan,
     dimensions,
     metrics: metricList,
     dataWarnings,

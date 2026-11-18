@@ -11,6 +11,8 @@ An evidence-first VALORANT player analysis prototype. It combines entered match 
 - Reports Wilson intervals for opening duel, clutch, and survival rates when their attempt counts are available.
 - Accepts optional role and agent breakdowns manually or from screenshot extraction; example data does not fabricate those breakdowns.
 - Explains how a questionnaire tendency was selected and which answers contributed to it.
+- Adds a professional-style impact report that separates opening creation/risk, personal production, team involvement, survival, clutch outcomes, and unavailable conversion or consistency data.
+- Shows multiple behavioral profile hypotheses only when independent answers support them, alongside observed evidence, limits, missing benchmarks, and review actions.
 - Marks unavailable comparisons instead of filling them with zero or inventing percentiles.
 
 Consistency requires per-match records, and reliable percentiles, z-scores, Bayesian priors, metric correlations, and context-adjusted comparisons require comparison cohorts or match-level data that are not connected yet. Those measures remain unavailable rather than being estimated. Current playstyle labels describe scenario-answer tendencies; they are not verified performance classifications.

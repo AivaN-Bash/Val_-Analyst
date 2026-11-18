@@ -127,7 +127,6 @@ export default function ValorantAnalyzer() {
     && (String(stats.kd).trim() !== '' || (Number(stats.deaths) > 0 && String(stats.kills).trim() !== ''));
   const s = num(stats);
   const updateAgent = (index, field, value) => setStats((current) => ({ ...current, agents: (current.agents || []).map((agent, i) => i === index ? { ...agent, [field]: value } : agent) }));
-  const updateRole = (role, field, value) => setStats((current) => ({ ...current, roles: { ...(current.roles || {}), [role]: { ...(current.roles?.[role] || {}), [field]: value === '' ? '' : Number(value) } } }));
 
   return (
     <main className="app-shell min-h-screen bg-[#101317] px-4 py-7 text-white sm:px-6 sm:py-12" style={{ '--accent': '#ff4655' }}>
@@ -155,7 +154,7 @@ export default function ValorantAnalyzer() {
               <summary className="cursor-pointer font-medium text-white/85">Add agent and role results</summary>
               <p className="mt-2 text-sm leading-5 text-white/60">These results appear only when you enter them here or import a tracker screenshot. Example data does not invent agent or role splits.</p>
               <h3 className="mt-5 text-sm font-semibold text-white/85">Results by role</h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">{ROLE_NAMES.map((role) => <div key={role} className="rounded-lg border border-white/10 p-3"><p className="mb-2 text-sm font-medium">{role}</p><div className="grid grid-cols-2 gap-2">{[['wr', 'Win %'], ['kda', 'KDA']].map(([key, label]) => <label key={key} className="min-w-0 text-xs text-white/65">{label}<input aria-label={`${role} ${label}`} type="number" min="0" max={key === 'wr' ? 100 : 10} step="any" value={stats.roles?.[role]?.[key] ?? ''} onChange={(event) => updateRole(role, key, event.target.value)} className="mt-1 w-full min-w-0 rounded-lg border border-white/25 bg-[#0e1115] px-2 py-2 text-sm text-white" /></label>)}</div></div>)}</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">{ROLE_NAMES.map((role) => <div key={role} className="rounded-lg border border-white/10 p-3"><p className="mb-2 text-sm font-medium">{role}</p><div className="grid grid-cols-2 gap-2">{[['m', 'Matches'], ['wr', 'Win %'], ['kda', 'KDA']].map(([key, label]) => <label key={key} className="min-w-0 text-xs text-white/65">{label}<input aria-label={`${role} ${label}`} type="number" min="0" max={key === 'm' ? 5000 : key === 'wr' ? 100 : 10} step="any" value={stats.roles?.[role]?.[key] ?? ''} onChange={(event) => setStats((current) => ({ ...current, roles: { ...(current.roles || {}), [role]: { ...(current.roles?.[role] || {}), [key]: event.target.value === '' ? '' : Number(event.target.value) } } }))} className="mt-1 w-full min-w-0 rounded-lg border border-white/25 bg-[#0e1115] px-2 py-2 text-sm text-white" /></label>)}</div></div>)}</div>
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold text-white/85">Results by agent</h3><Button variant="secondary" isDisabled={(stats.agents || []).length >= 5} className="!border !border-white/25 !bg-[#252c34] !text-white" onPress={() => setStats((current) => ({ ...current, agents: [...(current.agents || []), { name: '', m: '', wr: '', kd: '', adr: '', acs: '' }] }))}>Add agent</Button></div>
               <div className="mt-3 space-y-3">{(stats.agents || []).map((agent, index) => <div key={index} className="rounded-lg border border-white/10 p-3"><div className="mb-3 flex items-center gap-3"><input aria-label={`Agent ${index + 1} name`} type="text" maxLength="30" placeholder="Agent name" value={agent.name || ''} onChange={(event) => updateAgent(index, 'name', event.target.value)} className="min-w-0 flex-1 rounded-lg border border-white/25 bg-[#0e1115] px-3 py-2 text-sm text-white placeholder:text-white/45" /><Button variant="secondary" className="!border !border-white/25 !bg-[#252c34] !text-white" onPress={() => setStats((current) => ({ ...current, agents: (current.agents || []).filter((_, i) => i !== index) }))}>Remove</Button></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{AGENT_FIELDS.map(([key, label]) => <label key={key} className="min-w-0 text-xs text-white/65">{label}<input aria-label={`${agent.name || `Agent ${index + 1}`} ${label}`} type="number" min="0" max={key === 'wr' ? 100 : key === 'kd' ? 10 : key === 'adr' ? 400 : key === 'acs' ? 600 : 5000} step="any" value={agent[key] ?? ''} onChange={(event) => updateAgent(index, key, event.target.value === '' ? '' : Number(event.target.value))} className="mt-1 w-full min-w-0 rounded-lg border border-white/25 bg-[#0e1115] px-2 py-2 text-sm text-white" /></label>)}</div></div>)}</div>
             </details>
@@ -188,13 +187,14 @@ export default function ValorantAnalyzer() {
                 </Button>
               ))}
             </div>
-            <p className="mt-5 text-xs leading-5 text-white/55">Your answer adds a signal to your profile. The final read combines these choices with your entered stats.</p>{qi > 0 && <div className="mt-4"><Button variant="secondary" className="min-h-11 border border-white/25 bg-[#252c34] px-5 font-semibold text-white hover:bg-[#303944]" onPress={() => setQi(qi - 1)}>Previous question</Button></div>}
+            <p className="mt-5 text-xs leading-5 text-white/55">Your answer adds a self-reported behavior signal. Match statistics are analyzed separately and shown as evidence, not used to decide what you said you would do.</p>{qi > 0 && <div className="mt-4"><Button variant="secondary" className="min-h-11 border border-white/25 bg-[#252c34] px-5 font-semibold text-white hover:bg-[#303944]" onPress={() => setQi(qi - 1)}>Previous question</Button></div>}
           </section>
         )}
 
         {step === 'result' && res && (
           <section className="motion-enter mt-8">
             <div className={panel}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-white/45">Closest questionnaire tendency · not a performance rating</p>
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-2xl font-bold">{res.name}</h2>
                 {stats.rank && <Chip>{stats.rank}</Chip>}
@@ -212,7 +212,9 @@ export default function ValorantAnalyzer() {
                     ? `${res.decisionRationale.candidate.name} leads at ${res.decisionRationale.candidate.alignment}%${res.decisionRationale.runnerUp ? `, ahead of ${res.decisionRationale.runnerUp.name} at ${res.decisionRationale.runnerUp.alignment}%` : ', with no other tendency meeting the minimum evidence requirement'}. It passed the ${res.decisionRationale.minimumAlignment}% alignment and ${res.decisionRationale.minimumLead}-point lead rules.`
                     : !res.decisionRationale.candidate.eligible
                       ? `The closest raw pattern is ${res.decisionRationale.candidate.name}. It has ${res.decisionRationale.candidate.matchingSignals} answers that support it; ${res.decisionRationale.candidate.minimumMatchingAnswers} matching answers across at least ${res.decisionRationale.minimumQuestionCoverage} distinct questions are required before we report this tendency. This result stays mixed until there is enough evidence.`
-                      : `Your closest supported pattern is ${res.decisionRationale.candidate.name} (${res.decisionRationale.candidate.alignment}%), followed by ${res.decisionRationale.runnerUp.name} (${res.decisionRationale.runnerUp.alignment}%). It did not clear both the ${res.decisionRationale.minimumAlignment}% alignment and ${res.decisionRationale.minimumLead}-point lead rules, so the result stays mixed.`}
+                      : res.decisionRationale.runnerUp
+                        ? `Your closest supported pattern is ${res.decisionRationale.candidate.name} (${res.decisionRationale.candidate.alignment}%), followed by ${res.decisionRationale.runnerUp.name} (${res.decisionRationale.runnerUp.alignment}%). It did not clear both the ${res.decisionRationale.minimumAlignment}% alignment and ${res.decisionRationale.minimumLead}-point lead rules, so the result stays mixed.`
+                        : `Your closest supported pattern is ${res.decisionRationale.candidate.name} (${res.decisionRationale.candidate.alignment}%), but it did not reach the ${res.decisionRationale.minimumAlignment}% alignment rule. No second pattern has enough matching evidence to compare, so the result stays mixed.`}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/60">These percentages measure how your scenario choices align with each tendency. They do not measure aim, match impact, or proven in-game behavior; your stats are analyzed separately.</p>
                 {res.decisionRationale.evidence.length > 0 && <div className="mt-4">
@@ -236,6 +238,19 @@ export default function ValorantAnalyzer() {
                 <div className="mt-4 rounded-xl border border-[#ff6470]/25 bg-[#ff4655]/[.06] p-4 text-sm leading-6 text-white/75">
                   <strong className="text-white">Quick guide:</strong> match data shows recorded outcomes; scenario answers show your stated approach. A tendency is a clue to review, not a fixed label.
                 </div>
+                <details className="mt-4 rounded-2xl border border-white/15 bg-[#191e24] p-4 sm:p-5">
+                  <summary className="cursor-pointer font-semibold text-white">Player impact and tactical report</summary>
+                  <p className="mt-2 text-sm leading-5 text-white/60">This report separates measured outcomes from interpretation. It does not label a strength or weakness without a relevant benchmark.</p>
+                  <h3 className="mt-5 font-semibold">Player fingerprint · measured signals, not peer-normalized</h3>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">{res.impactObservations.map((item) => <article key={item.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="text-sm font-semibold text-white/90">{item.title}</h4><p className="mt-2 text-sm text-white/75">{item.evidence}</p><p className="mt-2 text-sm leading-5 text-white/60">{item.reading}</p><p className="mt-2 text-xs leading-5 text-white/45">Limit: {item.limitation}</p></article>)}</div>
+                  <h3 className="mt-6 font-semibold">Behavioral profile candidates</h3>
+                  <p className="mt-1 text-sm text-white/55">These are hypotheses from questionnaire choices. They allow multiple patterns and are not proof of match behavior.</p>
+                  {res.behavioralProfiles.length === 0
+                    ? <p className="mt-3 rounded-lg border border-white/10 p-3 text-sm text-white/60">No behavioral profile has enough independent answer evidence yet. The result stays open rather than forcing a type.</p>
+                    : <div className="mt-3 grid gap-3 sm:grid-cols-2">{res.behavioralProfiles.map((profile) => <article key={profile.name} className="rounded-xl border border-sky-300/20 bg-sky-400/[.05] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold text-white/90">{profile.name}</h4><span className="text-[11px] uppercase tracking-wide text-sky-100/70">{profile.status}</span></div><p className="mt-2 text-sm leading-5 text-white/65">{profile.description}</p><ul className="mt-2 space-y-1 text-xs leading-5 text-white/50">{profile.evidence.map((evidence) => <li key={`${evidence.question}-${evidence.answer}`}>{evidence.question}: {evidence.answer}</li>)}</ul></article>)}</div>}
+                  <h3 className="mt-6 font-semibold">Evidence-led review plan</h3>
+                  <div className="mt-3 space-y-3">{res.reviewPlan.map((item) => <article key={item.title} className="rounded-xl border border-white/10 p-3"><h4 className="font-semibold text-white/85">{item.title}</h4><dl className="mt-2 grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[130px_1fr]"><dt className="text-white/45">Observed evidence</dt><dd className="text-white/70">{item.evidence}</dd><dt className="text-white/45">Benchmark</dt><dd className="text-white/70">{item.benchmark}</dd><dt className="text-white/45">Uncertainty</dt><dd className="text-white/70">{item.uncertainty}</dd><dt className="text-white/45">Why review it</dt><dd className="text-white/70">{item.why}</dd><dt className="text-white/45">Next action</dt><dd className="text-white/70">{item.action}</dd></dl></article>)}</div>
+                </details>
                 <div className="mt-4 flex flex-col gap-3">
                   <FindingTable title="Match data observations" intro="Numbers from the sample you entered. Expand a row's details to learn how to interpret it." items={res.I.filter((item) => item.src === 'stats')} expanded />
                   <FindingTable title="Decision patterns" intro="Patterns inferred from your scenario choices. Check these against match footage before treating them as habits." items={res.I.filter((item) => item.src !== 'stats' && (item.t === 'pro' || item.t === 'info'))} />
@@ -300,7 +315,7 @@ export default function ValorantAnalyzer() {
                 <div className={`${panel} mt-4`}>
                   <h3 className="mb-3 font-semibold">Win rate by role</h3>
                   {Object.entries(s.roles || {}).filter(([, v]) => v.wr !== '' && v.kda !== '').length === 0 && <p className="text-sm text-white/60">No role splits were entered or extracted for this sample.</p>}
-                  {Object.entries(s.roles || {}).filter(([, v]) => v.wr !== '' && v.kda !== '').map(([r, v]) => <Bar key={r} label={r} value={Number(v.wr)} max={100} text={`${v.wr}% · KDA ${v.kda}`} />)}
+                  {Object.entries(s.roles || {}).filter(([, v]) => v.wr !== '' && v.kda !== '').map(([r, v]) => <Bar key={r} label={`${r}${v.m ? ` (${v.m} matches)` : ''}`} value={Number(v.wr)} max={100} text={`${v.wr}% · KDA ${v.kda}`} />)}
                 </div>
                 <div className={`${panel} mt-4`}>
                   <h3 className="mb-3 font-semibold">Top agents</h3>
