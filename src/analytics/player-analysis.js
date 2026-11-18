@@ -14,6 +14,8 @@ export const PLAYSTYLE_NAMES = {
 export const PLAYSTYLE_MIN_ALIGNMENT = 50;
 export const PLAYSTYLE_MIN_LEAD = 15;
 export const PLAYSTYLE_MIN_QUESTION_COVERAGE = 3;
+export const PLAYSTYLE_MIN_MATCHING_ANSWERS = 2;
+export const FLEX_MIN_MATCHING_ANSWERS = 3;
 export const ANALYSIS_MODEL_VERSION = '1.0.0';
 
 const ROLE_KEYS = Object.keys(PLAYSTYLE_NAMES).filter((key) => key !== 'balanced');
@@ -198,21 +200,25 @@ export function analyzePlayer(stats, answers, questions) {
     });
   });
   const coverage = Object.fromEntries(ROLE_KEYS.map((key) => [key, answerBreakdown[key].length]));
+  const matchingSignals = Object.fromEntries(ROLE_KEYS.map((key) => [key, answerBreakdown[key].filter((answer) => answer.contribution > 0).length]));
+  const minimumMatchingAnswers = Object.fromEntries(ROLE_KEYS.map((key) => [key, key === 'flex' ? FLEX_MIN_MATCHING_ANSWERS : PLAYSTYLE_MIN_MATCHING_ANSWERS]));
   const rawAlignment = Object.fromEntries(ROLE_KEYS.map((key) => [key, possibleScores[key] ? Math.round((rawScores[key] / possibleScores[key]) * 100) : 0]));
-  const eligible = ROLE_KEYS.filter((key) => coverage[key] >= PLAYSTYLE_MIN_QUESTION_COVERAGE).sort((a, b) => rawAlignment[b] - rawAlignment[a]);
+  const eligible = ROLE_KEYS.filter((key) => coverage[key] >= PLAYSTYLE_MIN_QUESTION_COVERAGE && matchingSignals[key] >= minimumMatchingAnswers[key]).sort((a, b) => rawAlignment[b] - rawAlignment[a]);
   const ranked = ROLE_KEYS.slice().sort((a, b) => rawAlignment[b] - rawAlignment[a]);
-  const sc = Object.fromEntries(ROLE_KEYS.map((key) => [key, coverage[key] >= PLAYSTYLE_MIN_QUESTION_COVERAGE ? rawAlignment[key] : null]));
+  const sc = Object.fromEntries(ROLE_KEYS.map((key) => [key, coverage[key] >= PLAYSTYLE_MIN_QUESTION_COVERAGE && matchingSignals[key] >= minimumMatchingAnswers[key] ? rawAlignment[key] : null]));
   const candidateKey = eligible[0] || ranked[0];
-  const runnerUpKey = eligible[1] || ranked.find((key) => key !== candidateKey);
+  const runnerUpKey = eligible.length > 1 ? eligible[1] : eligible.length === 0 ? ranked.find((key) => key !== candidateKey) : null;
   const candidateAlignment = rawAlignment[candidateKey];
   const runnerUpAlignment = runnerUpKey ? rawAlignment[runnerUpKey] : 0;
   const clearLead = eligible.length > 0 && candidateAlignment >= PLAYSTYLE_MIN_ALIGNMENT && candidateAlignment - runnerUpAlignment >= PLAYSTYLE_MIN_LEAD;
   const top = clearLead ? candidateKey : 'balanced';
   const decisionRationale = {
     clearLead,
-    candidate: { key: candidateKey, name: PLAYSTYLE_NAMES[candidateKey], alignment: candidateAlignment, coverage: coverage[candidateKey], eligible: coverage[candidateKey] >= PLAYSTYLE_MIN_QUESTION_COVERAGE },
-    runnerUp: runnerUpKey ? { key: runnerUpKey, name: PLAYSTYLE_NAMES[runnerUpKey], alignment: rawAlignment[runnerUpKey], coverage: coverage[runnerUpKey], eligible: coverage[runnerUpKey] >= PLAYSTYLE_MIN_QUESTION_COVERAGE } : null,
+    candidate: { key: candidateKey, name: PLAYSTYLE_NAMES[candidateKey], alignment: candidateAlignment, coverage: coverage[candidateKey], matchingSignals: matchingSignals[candidateKey], minimumMatchingAnswers: minimumMatchingAnswers[candidateKey], eligible: eligible.includes(candidateKey) },
+    runnerUp: runnerUpKey ? { key: runnerUpKey, name: PLAYSTYLE_NAMES[runnerUpKey], alignment: rawAlignment[runnerUpKey], coverage: coverage[runnerUpKey], matchingSignals: matchingSignals[runnerUpKey], minimumMatchingAnswers: minimumMatchingAnswers[runnerUpKey], eligible: eligible.includes(runnerUpKey) } : null,
     coverage,
+    matchingSignals,
+    minimumMatchingAnswers,
     minimumQuestionCoverage: PLAYSTYLE_MIN_QUESTION_COVERAGE,
     minimumAlignment: PLAYSTYLE_MIN_ALIGNMENT,
     minimumLead: PLAYSTYLE_MIN_LEAD,
